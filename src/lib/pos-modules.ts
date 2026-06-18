@@ -3,6 +3,8 @@
    (doyourorder referanslı: Envanter, İş Gücü, Sadakat, Rezervasyon)
    ============================================================ */
 
+import type { OrderItem } from "./pos-data";
+
 /* ---------- Envanter / Stok ---------- */
 export interface StockItem {
   id: string;
@@ -81,6 +83,46 @@ export const RECIPES: Record<string, RecipeLine[]> = {
 /** Reçetenin malzeme maliyeti toplamı (₺). */
 export const recipeCost = (lines: RecipeLine[]): number =>
   lines.reduce((s, l) => s + (stockById[l.stockId]?.cost ?? 0) * l.qty, 0);
+
+/**
+ * Sipariş kalemlerini reçeteye göre stoktan düşer; yeni stok dizisi döndürür.
+ * Reçetesi olmayan ürünler stok tüketmez.
+ */
+export const consumeStock = (
+  stock: StockItem[],
+  items: OrderItem[],
+  recipes: Record<string, RecipeLine[]>,
+): StockItem[] => {
+  const deduct: Record<string, number> = {};
+  for (const it of items) {
+    const lines = recipes[it.pid];
+    if (!lines) continue;
+    for (const l of lines) {
+      deduct[l.stockId] = (deduct[l.stockId] ?? 0) + l.qty * it.qty;
+    }
+  }
+  return stock.map((s) =>
+    deduct[s.id]
+      ? { ...s, qty: Math.max(0, Math.round((s.qty - deduct[s.id]) * 1000) / 1000) }
+      : s,
+  );
+};
+
+/**
+ * Mevcut stokla bu reçeteden kaç porsiyon yapılabilir (limit malzemeye göre).
+ * Reçete boşsa Infinity döner.
+ */
+export const portionsPossible = (lines: RecipeLine[], stock: StockItem[]): number => {
+  if (!lines.length) return Infinity;
+  const byId: Record<string, StockItem> = Object.fromEntries(stock.map((s) => [s.id, s]));
+  const counts = lines
+    .filter((l) => l.qty > 0)
+    .map((l) => {
+      const s = byId[l.stockId];
+      return s ? Math.floor(s.qty / l.qty) : 0;
+    });
+  return counts.length ? Math.min(...counts) : Infinity;
+};
 
 /* ---------- Yetkilendirme (RBAC) ---------- */
 /** Sidebar modül kimlikleri — sidebar View ile birebir aynı. */

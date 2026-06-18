@@ -9,6 +9,7 @@ import {
   Wallet,
   Package,
   BookOpenCheck,
+  ChefHat,
   Percent,
   ReceiptText,
   X,
@@ -24,8 +25,8 @@ import {
   stockById,
   isLow,
   stockValue,
-  RECIPES,
   recipeCost,
+  portionsPossible,
   type StockItem,
   type RecipeLine,
 } from "@/lib/pos-modules";
@@ -33,16 +34,23 @@ import { PrimaryButton, Stat, Tab, TopBar } from "./ui";
 import { usePerms } from "./perms";
 import { Food } from "./food";
 
-export function Stok() {
+export function Stok({
+  stock,
+  recipes,
+  setRecipes,
+}: {
+  stock: StockItem[];
+  recipes: Record<string, RecipeLine[]>;
+  setRecipes: Dispatch<SetStateAction<Record<string, RecipeLine[]>>>;
+}) {
   const [tab, setTab] = useState<"envanter" | "recete">("envanter");
-  const [recipes, setRecipes] = useState<Record<string, RecipeLine[]>>(RECIPES);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <TopBar
         title="Stok & Envanter"
         icon={Boxes}
-        sub={STOCK.length + " kalem · " + Object.keys(recipes).length + " reçete"}
+        sub={stock.length + " kalem · " + Object.keys(recipes).length + " reçete"}
         right={
           tab === "envanter" ? (
             <PrimaryButton icon={Plus}>Stok Girişi</PrimaryButton>
@@ -65,7 +73,11 @@ export function Stok() {
         </Tab>
       </div>
 
-      {tab === "envanter" ? <Envanter /> : <Receteler recipes={recipes} setRecipes={setRecipes} />}
+      {tab === "envanter" ? (
+        <Envanter stock={stock} />
+      ) : (
+        <Receteler recipes={recipes} setRecipes={setRecipes} stock={stock} />
+      )}
     </div>
   );
 }
@@ -73,19 +85,19 @@ export function Stok() {
 /* ============================================================
    Envanter — stok kalemleri tablosu
    ============================================================ */
-function Envanter() {
+function Envanter({ stock }: { stock: StockItem[] }) {
   const [cat, setCat] = useState("hepsi");
-  const list = STOCK.filter((s) => (cat === "hepsi" ? true : s.cat === cat));
-  const low = STOCK.filter(isLow);
-  const toplamDeger = STOCK.reduce((s, i) => s + stockValue(i), 0);
+  const list = stock.filter((s) => (cat === "hepsi" ? true : s.cat === cat));
+  const low = stock.filter(isLow);
+  const toplamDeger = stock.reduce((s, i) => s + stockValue(i), 0);
 
   return (
     <>
       <div className="mb-4 grid grid-cols-4 gap-4 px-7">
         <Stat icon={Wallet} label="Envanter Değeri" value={TL(toplamDeger)} tone="orange" />
-        <Stat icon={Package} label="Toplam Kalem" value={STOCK.length + ""} tone="sky" />
+        <Stat icon={Package} label="Toplam Kalem" value={stock.length + ""} tone="sky" />
         <Stat icon={AlertTriangle} label="Kritik Stok" value={low.length + " kalem"} tone="rose" />
-        <Stat icon={PackageCheck} label="Yeterli Stok" value={STOCK.length - low.length + " kalem"} tone="green" />
+        <Stat icon={PackageCheck} label="Yeterli Stok" value={stock.length - low.length + " kalem"} tone="green" />
       </div>
 
       {low.length > 0 && (
@@ -169,9 +181,11 @@ function StockRow({ s }: { s: StockItem }) {
 function Receteler({
   recipes,
   setRecipes,
+  stock,
 }: {
   recipes: Record<string, RecipeLine[]>;
   setRecipes: Dispatch<SetStateAction<Record<string, RecipeLine[]>>>;
+  stock: StockItem[];
 }) {
   const { canEdit } = usePerms();
   const [cat, setCat] = useState("hepsi");
@@ -223,6 +237,7 @@ function Receteler({
               key={p.id}
               p={p}
               lines={recipes[p.id] ?? []}
+              stock={stock}
               canEdit={canEdit}
               onEdit={() => setEditing(p)}
             />
@@ -251,20 +266,29 @@ function marginTone(m: number) {
   return "bg-rose-100 text-rose-700";
 }
 
+function portionTone(n: number) {
+  if (n <= 0) return "bg-rose-100 text-rose-700";
+  if (n < 5) return "bg-amber-100 text-amber-700";
+  return "bg-emerald-100 text-emerald-700";
+}
+
 function RecipeCard({
   p,
   lines,
+  stock,
   canEdit,
   onEdit,
 }: {
   p: Product;
   lines: RecipeLine[];
+  stock: StockItem[];
   canEdit: boolean;
   onEdit: () => void;
 }) {
   const cost = recipeCost(lines);
   const margin = p.price > 0 ? ((p.price - cost) / p.price) * 100 : 0;
   const has = lines.length > 0;
+  const portions = has ? portionsPossible(lines, stock) : Infinity;
 
   return (
     <div className="pos-card flex flex-col p-4">
@@ -282,6 +306,19 @@ function RecipeCard({
           </span>
         )}
       </div>
+
+      {/* Kalan porsiyon */}
+      {has && (
+        <div className={cn("mt-3 flex items-center justify-between rounded-xl px-3 py-2", portionTone(portions))}>
+          <span className="flex items-center gap-1.5 text-[11px] font-bold">
+            <ChefHat className="h-3.5 w-3.5" strokeWidth={2.4} />
+            Stokla yapılabilir
+          </span>
+          <span className="font-display tnum text-sm font-extrabold">
+            {portions <= 0 ? "Tükendi" : "≈ " + portions + " porsiyon"}
+          </span>
+        </div>
+      )}
 
       {/* Malzemeler */}
       <div className="mt-3 flex-1">

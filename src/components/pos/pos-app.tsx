@@ -4,9 +4,14 @@ import { useEffect, useState } from "react";
 import { seedTables, type Table } from "@/lib/pos-data";
 import {
   STAFF,
+  STOCK,
+  RECIPES,
+  consumeStock,
   userModules,
   userCanEdit,
   type Staff,
+  type StockItem,
+  type RecipeLine,
   type ModuleId,
 } from "@/lib/pos-modules";
 import { Sidebar, type View } from "./sidebar";
@@ -32,6 +37,10 @@ export function PosApp() {
   const [openNo, setOpenNo] = useState<string | null>(null);
   // SSR-güvenli dakika saati: sunucuda 0, mount sonrası ilerler.
   const [clockMin, setClockMin] = useState(0);
+
+  // Stok & reçeteler (ödeme alınınca reçeteye göre stok düşer)
+  const [stock, setStock] = useState<StockItem[]>(STOCK);
+  const [recipes, setRecipes] = useState<Record<string, RecipeLine[]>>(RECIPES);
 
   // Personel & aktif kullanıcı (yetkilendirme)
   const [staff, setStaff] = useState<Staff[]>(STAFF);
@@ -87,6 +96,11 @@ export function PosApp() {
     });
 
   const payTable = (no: string) => {
+    // Ödeme alınınca: adisyondaki ürünleri reçeteye göre stoktan düş.
+    const paid = tables.find((t) => t.no === no);
+    if (paid && paid.items.length) {
+      setStock((s) => consumeStock(s, paid.items, recipes));
+    }
     updateTable(no, (t) => {
       t.status = "bos";
       t.items = [];
@@ -147,7 +161,13 @@ export function PosApp() {
           {view === "mutfak" && <Mutfak tables={tables} clockMin={clockMin} />}
           {view === "siramatik" && <Siramatik />}
           {view === "menu" && <Menu />}
-          {view === "stok" && <Stok />}
+          {view === "stok" && (
+            <Stok
+              stock={stock}
+              recipes={recipes}
+              setRecipes={setRecipes}
+            />
+          )}
           {view === "personel" && (
             <Personel
               staff={staff}
