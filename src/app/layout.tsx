@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Sora, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
+import { BRAND } from "@/lib/brand";
 
 const jakarta = Plus_Jakarta_Sans({
   variable: "--font-jakarta",
@@ -15,9 +16,8 @@ const sora = Sora({
 });
 
 export const metadata: Metadata = {
-  title: "Lezzet POS — Restoran Yönetim",
-  description:
-    "Lezzet POS — masa planı, adisyon, mutfak ekranı ve gün sonu raporu.",
+  title: BRAND.title,
+  description: BRAND.description,
 };
 
 export default function RootLayout({

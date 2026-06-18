@@ -8,8 +8,14 @@ import { Adisyon } from "./adisyon";
 import { Mutfak } from "./mutfak";
 import { Menu } from "./menu";
 import { Rapor } from "./rapor";
+import { Stok } from "./stok";
+import { Personel } from "./personel";
+import { Subeler } from "./subeler";
+import { Ayarlar } from "./ayarlar";
+import { Login } from "./login";
 
 export function PosApp() {
+  const [authed, setAuthed] = useState(false);
   const [view, setView] = useState<View>("masalar");
   const [tables, setTables] = useState<Table[]>(seedTables);
   const [activeHall, setActiveHall] = useState("ic");
@@ -72,8 +78,10 @@ export function PosApp() {
 
   const openTableObj = tables.find((t) => t.no === openNo);
 
+  if (!authed) return <Login onLogin={() => setAuthed(true)} />;
+
   return (
-    <div className="text-espresso flex h-screen w-screen overflow-hidden bg-[#EFEBE4] font-sans">
+    <div className="pos-canvas flex h-screen w-screen overflow-hidden font-sans text-ink">
       <Sidebar view={view} setView={goView} />
       <main className="flex min-w-0 flex-1 flex-col">
         {view === "masalar" && !openTableObj && (
@@ -98,7 +106,11 @@ export function PosApp() {
         )}
         {view === "mutfak" && <Mutfak tables={tables} clockMin={clockMin} />}
         {view === "menu" && <Menu />}
+        {view === "stok" && <Stok />}
+        {view === "personel" && <Personel />}
         {view === "rapor" && <Rapor tables={tables} />}
+        {view === "subeler" && <Subeler />}
+        {view === "ayarlar" && <Ayarlar />}
       </main>
     </div>
   );

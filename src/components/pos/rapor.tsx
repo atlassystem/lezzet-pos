@@ -1,5 +1,6 @@
 "use client";
 
+import { BarChart3, Wallet, Receipt, TrendingUp, CircleDollarSign, FileText } from "lucide-react";
 import {
   CATS,
   TL,
@@ -8,12 +9,13 @@ import {
   type Table,
 } from "@/lib/pos-data";
 import { Food } from "./food";
-import { Stat, TopBar } from "./ui";
+import { AreaChart, DonutChart } from "./charts";
+import { Card, GhostButton, PrimaryButton, Stat, TopBar } from "./ui";
 
 const ODEME = [
-  { k: "Nakit", v: 9850, c: "#2FA36B" },
-  { k: "Kredi Kartı", v: 12600, c: "#E7843C" },
-  { k: "Yemek Çeki", v: 2400, c: "#8a5fb0" },
+  { k: "Nakit", v: 9850, c: "#10b981" },
+  { k: "Kredi Kartı", v: 12600, c: "#f59e0b" },
+  { k: "Yemek Çeki", v: 2400, c: "#8b5cf6" },
 ];
 
 const SAATLIK: [string, number][] = [
@@ -35,7 +37,6 @@ export function Rapor({ tables }: { tables: Table[] }) {
   const ortalama = ciro / adisyon;
 
   const odToplam = ODEME.reduce((s, o) => s + o.v, 0);
-  const maxS = Math.max(...SAATLIK.map((s) => s[1]));
 
   const sayac: Record<string, number> = {};
   tables.forEach((t) =>
@@ -53,91 +54,74 @@ export function Rapor({ tables }: { tables: Table[] }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <TopBar
         title="Gün Sonu — Z Raporu"
+        icon={BarChart3}
         right={
           <>
-            <button className="text-espresso/70 rounded-xl border border-[#E6E0D6] bg-white px-4 py-2.5 text-sm font-bold">
-              📄 PDF
-            </button>
-            <button className="from-amber0 to-amber1 soft rounded-xl bg-gradient-to-r px-4 py-2.5 text-sm font-bold text-white">
-              Gün Sonu Al
-            </button>
+            <GhostButton icon={FileText}>PDF</GhostButton>
+            <PrimaryButton>Gün Sonu Al</PrimaryButton>
           </>
         }
       />
 
-      <div className="space-y-4 overflow-y-auto px-7 pb-7">
+      <div className="scroll-light space-y-4 overflow-y-auto px-7 pb-7">
         <div className="grid grid-cols-4 gap-4">
-          <Stat icon="💰" label="Toplam Ciro" value={TL(ciro)} tone="amber" />
-          <Stat icon="🧾" label="Adisyon Sayısı" value={adisyon + ""} tone="green" />
-          <Stat icon="📈" label="Ortalama Adisyon" value={TL(ortalama)} tone="orange" />
-          <Stat icon="🟢" label="Açık Hesap" value={TL(acikCiro)} tone="slate" />
+          <Stat icon={Wallet} label="Toplam Ciro" value={TL(ciro)} tone="orange" />
+          <Stat icon={Receipt} label="Adisyon Sayısı" value={adisyon + ""} tone="green" />
+          <Stat icon={TrendingUp} label="Ortalama Adisyon" value={TL(ortalama)} tone="sky" />
+          <Stat icon={CircleDollarSign} label="Açık Hesap" value={TL(acikCiro)} tone="violet" />
         </div>
 
         <div className="grid grid-cols-3 gap-4">
-          <div className="soft col-span-2 rounded-2xl bg-white p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-display font-extrabold">Saatlik Ciro</h3>
-              <span className="text-espresso/40 text-xs font-semibold">
-                En yoğun: 20:00
+          <Card
+            title="Saatlik Ciro"
+            className="col-span-2"
+            right={
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">
+                <TrendingUp className="h-3.5 w-3.5" strokeWidth={2.4} />
+                En yoğun 20:00
               </span>
-            </div>
-            <div className="flex h-44 items-end gap-2">
-              {SAATLIK.map(([h, v]) => (
-                <div key={h} className="flex flex-1 flex-col items-center gap-1.5">
-                  <div
-                    className="from-amber1 to-gold/80 w-full rounded-t-lg bg-gradient-to-t"
-                    style={{ height: (v / maxS) * 150 + "px" }}
-                    title={TL(v)}
-                  />
-                  <span className="text-espresso/40 text-[10px] font-semibold">
-                    {h}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+            }
+          >
+            <AreaChart
+              data={SAATLIK.map(([h, v]) => ({ label: h, value: v }))}
+              height={200}
+              fmt={(n) => TL(n)}
+              peakLabel
+            />
+          </Card>
 
-          <div className="soft rounded-2xl bg-white p-5">
-            <h3 className="font-display mb-4 font-extrabold">Ödeme Dağılımı</h3>
-            <div className="space-y-4">
-              {ODEME.map((o) => (
-                <div key={o.k}>
-                  <div className="mb-1.5 flex items-center justify-between text-sm">
-                    <span className="text-espresso/70 flex items-center gap-2 font-semibold">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ background: o.c }}
-                      />
+          <Card title="Ödeme Dağılımı">
+            <div className="flex flex-col items-center">
+              <DonutChart
+                segments={ODEME.map((o) => ({ label: o.k, value: o.v, color: o.c }))}
+                centerBottom="Tahsilat"
+                centerTop={TL(odToplam)}
+              />
+              <div className="mt-5 w-full space-y-2.5">
+                {ODEME.map((o) => (
+                  <div key={o.k} className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2 font-semibold text-ink2">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: o.c }} />
                       {o.k}
                     </span>
-                    <span className="tnum font-bold">{TL(o.v)}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="tnum text-[11px] text-ink3">
+                        %{Math.round((o.v / odToplam) * 100)}
+                      </span>
+                      <span className="tnum font-bold text-ink">{TL(o.v)}</span>
+                    </span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-[#F0EBE2]">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: (o.v / odToplam) * 100 + "%", background: o.c }}
-                    />
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-            <div className="mt-5 flex items-center justify-between border-t border-dashed border-[#E0D8CC] pt-4">
-              <span className="text-sm font-bold">Toplam Tahsilat</span>
-              <span className="font-display text-amber1 tnum text-lg font-extrabold">
-                {TL(odToplam)}
-              </span>
-            </div>
-          </div>
+          </Card>
         </div>
 
-        <div className="soft rounded-2xl bg-white p-5">
-          <h3 className="font-display mb-4 font-extrabold">
-            En Çok Satan Ürünler
-          </h3>
+        <Card title="En Çok Satan Ürünler">
           <div className="space-y-3">
             {top.map((t, i) => (
               <div key={t.p.id} className="flex items-center gap-3">
-                <span className="font-display text-espresso/30 w-6 text-center font-extrabold">
+                <span className="font-display w-6 text-center text-lg font-extrabold text-ink3">
                   {i + 1}
                 </span>
                 <Food
@@ -147,24 +131,24 @@ export function Rapor({ tables }: { tables: Table[] }) {
                   className="h-10 w-10 shrink-0 rounded-lg"
                 />
                 <div className="w-44 shrink-0">
-                  <div className="text-sm leading-tight font-bold">{t.p.name}</div>
-                  <div className="text-espresso/40 text-[11px]">
+                  <div className="text-sm leading-tight font-bold text-ink">{t.p.name}</div>
+                  <div className="text-[11px] text-ink3">
                     {CATS.find((c) => c.id === t.p.cat)?.name}
                   </div>
                 </div>
-                <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[#F0EBE2]">
+                <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-surface2">
                   <div
-                    className="from-amber0 to-gold h-full rounded-full bg-gradient-to-r"
+                    className="h-full rounded-full bg-gradient-to-r from-brand to-orange-400"
                     style={{ width: (t.n / maxTop) * 100 + "%" }}
                   />
                 </div>
-                <span className="tnum w-16 text-right text-sm font-bold">
+                <span className="tnum w-16 text-right text-sm font-bold text-ink">
                   {t.n} adet
                 </span>
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       </div>
     </div>
   );
