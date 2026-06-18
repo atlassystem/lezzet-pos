@@ -106,59 +106,56 @@ export const COMING_MODULES: ModuleCard[] = [
   { key: "delivery", title: "Paket & Kurye", desc: "Gel-al ve teslimat siparişi yönetimi.", soon: false },
 ];
 
-/* ---------- Sıramatik: Gel-Al / Paket sıra biletleri ---------- */
-export type QState = "hazirlaniyor" | "hazir" | "teslim";
+/* ============================================================
+   Sıramatik — Her şey dahil otel SNACK BAR akışı
+   Misafir kiosk'tan sipariş verir → fiş mutfağa + bara düşer →
+   misafire sıra numarası verilir → hazır olunca çağrı ekranında yanar.
+   Ödeme yok (her şey dahil); misafir oda numarasıyla tanımlanır.
+   ============================================================ */
+export type Station = "mutfak" | "bar";
 
-export interface QTicket {
+export interface SnackItem {
   id: string;
-  no: number; // ekranda görünen sıra numarası
-  channel: "Gel-Al" | "Paket" | "Online";
-  name: string; // müşteri adı / etiket
-  items: number; // ürün adedi
-  state: QState;
-  min: number; // kaç dk önce alındı
+  name: string;
+  emoji: string;
+  station: Station; // fiş bu istasyona düşer
 }
 
-export const QUEUE: QTicket[] = [
-  { id: "q1", no: 142, channel: "Gel-Al", name: "Mehmet B.", items: 3, state: "hazir", min: 11 },
-  { id: "q2", no: 143, channel: "Paket", name: "Trendyol #5521", items: 5, state: "hazir", min: 9 },
-  { id: "q3", no: 144, channel: "Gel-Al", name: "Ayşe K.", items: 2, state: "hazirlaniyor", min: 7 },
-  { id: "q4", no: 145, channel: "Online", name: "Getir #8830", items: 4, state: "hazirlaniyor", min: 5 },
-  { id: "q5", no: 146, channel: "Gel-Al", name: "Can T.", items: 1, state: "hazirlaniyor", min: 3 },
-  { id: "q6", no: 147, channel: "Paket", name: "Yemeksepeti #441", items: 6, state: "hazirlaniyor", min: 1 },
+/** Snack bar menüsü — fiyat yok (her şey dahil). */
+export const SNACK_MENU: SnackItem[] = [
+  // Mutfak
+  { id: "burger", name: "Hamburger", emoji: "🍔", station: "mutfak" },
+  { id: "cheese", name: "Cheeseburger", emoji: "🧀", station: "mutfak" },
+  { id: "fries", name: "Patates Kızartması", emoji: "🍟", station: "mutfak" },
+  { id: "nugget", name: "Tavuk Nugget", emoji: "🍗", station: "mutfak" },
+  { id: "tost", name: "Karışık Tost", emoji: "🥪", station: "mutfak" },
+  { id: "slice", name: "Dilim Pizza", emoji: "🍕", station: "mutfak" },
+  { id: "wrap", name: "Tavuk Dürüm", emoji: "🌯", station: "mutfak" },
+  { id: "hotdog", name: "Sosisli", emoji: "🌭", station: "mutfak" },
+  // Bar
+  { id: "cola", name: "Kola", emoji: "🥤", station: "bar" },
+  { id: "ayran", name: "Ayran", emoji: "🥛", station: "bar" },
+  { id: "cay", name: "Çay", emoji: "🫖", station: "bar" },
+  { id: "kahve", name: "Kahve", emoji: "☕", station: "bar" },
+  { id: "limonata", name: "Limonata", emoji: "🍋", station: "bar" },
+  { id: "shake", name: "Milkshake", emoji: "🥤", station: "bar" },
+  { id: "icecream", name: "Dondurma", emoji: "🍦", station: "bar" },
+  { id: "mocktail", name: "Kokteyl (alkolsüz)", emoji: "🍹", station: "bar" },
 ];
 
-export const QSTATE: Record<QState, { label: string; chip: string; dot: string }> = {
-  hazirlaniyor: { label: "Hazırlanıyor", chip: "bg-amber-100 text-amber-700", dot: "#f59e0b" },
-  hazir: { label: "Hazır", chip: "bg-emerald-100 text-emerald-700", dot: "#10b981" },
-  teslim: { label: "Teslim edildi", chip: "bg-slate-100 text-slate-500", dot: "#94a3b8" },
+export const snackById: Record<string, SnackItem> = Object.fromEntries(
+  SNACK_MENU.map((s) => [s.id, s]),
+);
+
+export const STATION_META: Record<Station, { label: string; emoji: string; chip: string }> = {
+  mutfak: { label: "Mutfak", emoji: "🍳", chip: "bg-orange-100 text-orange-700" },
+  bar: { label: "Bar", emoji: "🍹", chip: "bg-sky-100 text-sky-700" },
 };
 
-/* ---------- Sıramatik: Masa bekleme listesi (waitlist) ---------- */
-export type WState = "bekliyor" | "cagrildi" | "oturdu" | "iptal";
+export type SnackState = "hazirlaniyor" | "hazir" | "teslim";
 
-export interface WaitEntry {
-  id: string;
-  no: number; // bekleme sırası
-  name: string;
-  size: number; // kişi sayısı
-  phone: string;
-  min: number; // kaç dk bekliyor
-  pref: string; // salon tercihi
-  state: WState;
-}
-
-export const WAITLIST: WaitEntry[] = [
-  { id: "w1", no: 7, name: "Yılmaz Ailesi", size: 4, phone: "0532 •• •• 14", min: 18, pref: "Bahçe", state: "cagrildi" },
-  { id: "w2", no: 8, name: "Demir", size: 2, phone: "0541 •• •• 02", min: 12, pref: "Farketmez", state: "bekliyor" },
-  { id: "w3", no: 9, name: "Kaya +1", size: 2, phone: "0505 •• •• 77", min: 9, pref: "İç Salon", state: "bekliyor" },
-  { id: "w4", no: 10, name: "Şahin grubu", size: 6, phone: "0533 •• •• 51", min: 6, pref: "Teras", state: "bekliyor" },
-  { id: "w5", no: 11, name: "Aydın", size: 3, phone: "0537 •• •• 39", min: 2, pref: "Farketmez", state: "bekliyor" },
-];
-
-export const WSTATE: Record<WState, { label: string; chip: string; dot: string }> = {
-  bekliyor: { label: "Bekliyor", chip: "bg-sky-100 text-sky-700", dot: "#38bdf8" },
-  cagrildi: { label: "Çağrıldı", chip: "bg-amber-100 text-amber-700", dot: "#f59e0b" },
-  oturdu: { label: "Masaya alındı", chip: "bg-emerald-100 text-emerald-700", dot: "#10b981" },
-  iptal: { label: "İptal", chip: "bg-slate-100 text-slate-500", dot: "#94a3b8" },
+export const SNACK_STATE: Record<SnackState, { label: string; chip: string; dot: string }> = {
+  hazirlaniyor: { label: "Hazırlanıyor", chip: "bg-amber-100 text-amber-700", dot: "#f59e0b" },
+  hazir: { label: "Hazır", chip: "bg-emerald-100 text-emerald-700", dot: "#10b981" },
+  teslim: { label: "Teslim", chip: "bg-slate-100 text-slate-500", dot: "#94a3b8" },
 };
