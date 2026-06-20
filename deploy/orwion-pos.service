@@ -1,0 +1,31 @@
+# Orwion POS — systemd servisi (Next.js standalone)
+# Kurulum:
+#   sudo cp deploy/orwion-pos.service /etc/systemd/system/orwion-pos.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now orwion-pos
+#   sudo systemctl status orwion-pos
+#
+# Not: ExecStart'taki node yolunu sunucudaki ile eşleştir: `which node`
+#      (nvm kullanılıyorsa /root/.nvm/.../bin/node olabilir).
+
+[Unit]
+Description=Orwion POS (Next.js standalone)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/orwion-pos/.next/standalone
+Environment=NODE_ENV=production
+Environment=PORT=3100
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+# Güvenlik sıkılaştırma
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
