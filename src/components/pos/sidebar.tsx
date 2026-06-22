@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   ChefHat,
   BookOpen,
+  ClipboardList,
   Boxes,
   Users,
   BarChart3,
@@ -46,6 +47,7 @@ const GROUPS: {
   {
     label: "Yönetim",
     items: [
+      { id: "menu_yonetim", label: "Menü Yönetimi", ic: ClipboardList },
       { id: "stok", label: "Stok & Envanter", ic: Boxes, badge: "3" },
       { id: "personel", label: "Personel", ic: Users },
       { id: "subeler", label: "Şubeler", ic: Building2 },

@@ -30,6 +30,8 @@ export interface Product {
   grad: string;
   img: string;
   route: Route;
+  /** İleride Sedna ürün eşlemesi için opsiyonel kod alanı (şimdilik kullanılmaz). */
+  code?: string;
 }
 
 export interface OrderItem {
@@ -121,6 +123,29 @@ export const PRODUCTS: Product[] = [
 export const prodById: Record<string, Product> = Object.fromEntries(
   PRODUCTS.map((p) => [p.id, p]),
 );
+
+/** Yeni ürün için varsayılan görsel (CRUD'da emoji/grad/img boş bırakılırsa). */
+export const DEFAULT_PRODUCT_GRAD = G.amber;
+export const DEFAULT_PRODUCT_EMOJI = "🍽️";
+
+/**
+ * Çalışma zamanı menü kaynağı (DB → modül).
+ * Ürünler/kategoriler DB'den geldiğinde modül seviyesindeki
+ * PRODUCTS / CATS / prodById dizilerini YERİNDE günceller; böylece bu
+ * sabitleri doğrudan import eden tüm ekranlar (adisyon, masalar, garson,
+ * mutfak, sıramatik, rapor) ek değişiklik gerektirmeden güncel veriyle
+ * çalışır. Diziler aynı referansta kalır (yalnızca içerik değişir).
+ */
+export function hydrateMenu(products?: Product[], cats?: Category[]): void {
+  if (products && products.length) {
+    PRODUCTS.splice(0, PRODUCTS.length, ...products);
+    for (const k of Object.keys(prodById)) delete prodById[k];
+    for (const p of PRODUCTS) prodById[p.id] = p;
+  }
+  if (cats && cats.length) {
+    CATS.splice(0, CATS.length, ...cats);
+  }
+}
 
 /* ---------- Salonlar ---------- */
 export const HALLS: Hall[] = [

@@ -132,6 +132,7 @@ export type ModuleId =
   | "mutfak"
   | "siramatik"
   | "menu"
+  | "menu_yonetim"
   | "stok"
   | "personel"
   | "rapor"
@@ -143,7 +144,8 @@ export const MODULES: { id: ModuleId; label: string }[] = [
   { id: "garson", label: "Garson" },
   { id: "mutfak", label: "Mutfak (KDS)" },
   { id: "siramatik", label: "Sıramatik" },
-  { id: "menu", label: "Menü Yönetimi" },
+  { id: "menu", label: "Menü" },
+  { id: "menu_yonetim", label: "Menü Yönetimi" },
   { id: "stok", label: "Stok & Envanter" },
   { id: "personel", label: "Personel" },
   { id: "rapor", label: "Raporlar" },

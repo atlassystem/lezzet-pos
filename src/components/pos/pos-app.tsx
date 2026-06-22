@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
-import { seedTables, type Table } from "@/lib/pos-data";
+import {
+  seedTables,
+  hydrateMenu,
+  PRODUCTS,
+  CATS,
+  type Table,
+  type Product,
+  type Category,
+} from "@/lib/pos-data";
 import {
   STAFF,
   STOCK,
@@ -21,6 +29,9 @@ import {
   saveRecipes,
   saveStaff,
   saveStockQty,
+  createProduct,
+  updateProduct,
+  deleteProduct,
 } from "@/lib/pos-api";
 import { Sidebar, type View } from "./sidebar";
 import { PermsProvider, ReadOnlyBanner } from "./perms";
@@ -30,6 +41,7 @@ import { Garson } from "./garson";
 import { Mutfak } from "./mutfak";
 import { Siramatik } from "./siramatik";
 import { Menu } from "./menu";
+import { MenuYonetim } from "./menu-yonetim";
 import { Rapor } from "./rapor";
 import { Stok } from "./stok";
 import { Personel } from "./personel";
@@ -45,6 +57,10 @@ export function PosApp() {
   const [openNo, setOpenNo] = useState<string | null>(null);
   // SSR-güvenli dakika saati: sunucuda 0, mount sonrası ilerler.
   const [clockMin, setClockMin] = useState(0);
+
+  // Menü (ürünler & kategoriler) — DB kaynaklı; modül dizileri de hidrate edilir.
+  const [products, setProducts] = useState<Product[]>(() => [...PRODUCTS]);
+  const [cats, setCats] = useState<Category[]>(() => [...CATS]);
 
   // Stok & reçeteler (ödeme alınınca reçeteye göre stok düşer)
   const [stock, setStock] = useState<StockItem[]>(STOCK);
@@ -65,6 +81,13 @@ export function PosApp() {
       .then((d) => {
         if (!alive) return;
         if (d.tables?.length) setTables(d.tables);
+        // Ürün/kategoriyi hem React state'ine hem de modül dizilerine (statik
+        // import eden ekranlar için) yaz.
+        if (d.products?.length || d.categories?.length) {
+          hydrateMenu(d.products, d.categories);
+          if (d.products?.length) setProducts(d.products);
+          if (d.categories?.length) setCats(d.categories);
+        }
         if (d.stock?.length) setStock(d.stock);
         if (d.recipes) setRecipesState(d.recipes);
         if (d.staff?.length) setStaffState(d.staff);
@@ -112,6 +135,42 @@ export function PosApp() {
   const stockIn = (id: string, qty: number) => {
     setStock((s) => s.map((x) => (x.id === id ? { ...x, qty } : x)));
     void saveStockQty(id, qty);
+  };
+
+  // ---- Ürün CRUD (Menü Yönetimi). Her değişiklik DB'ye yazılır ve hem React
+  // state'i hem modül dizileri güncellenir; böylece "Menü", adisyon ve reçeteler
+  // anında yeni veriyle çalışır. ----
+  type ProductDraft = { name: string; cat: string; price: number; route: Product["route"] };
+
+  const addProduct = async (d: ProductDraft) => {
+    const created = await createProduct(d);
+    if (!created) return;
+    const next = [...products, created];
+    setProducts(next);
+    hydrateMenu(next);
+  };
+
+  const editProduct = async (id: string, d: ProductDraft) => {
+    const updated = await updateProduct(id, d);
+    if (!updated) return;
+    const next = products.map((p) => (p.id === id ? updated : p));
+    setProducts(next);
+    hydrateMenu(next);
+  };
+
+  const removeProduct = async (id: string) => {
+    const ok = await deleteProduct(id);
+    if (!ok) return;
+    const next = products.filter((p) => p.id !== id);
+    setProducts(next);
+    hydrateMenu(next);
+    // Sunucuda reçetesi de silindi; yerel reçete haritasından da temizle.
+    setRecipesState((r) => {
+      if (!r[id]) return r;
+      const n = { ...r };
+      delete n[id];
+      return n;
+    });
   };
 
   // Masayı güncelle + kalıcı kaydet (yeni durumu sunucuya yaz).
@@ -204,6 +263,8 @@ export function PosApp() {
               askBill={askBill}
               payTable={payTable}
               clockMin={clockMin}
+              products={products}
+              cats={cats}
             />
           )}
           {!inAdisyon && view === "masalar" && (
@@ -220,13 +281,24 @@ export function PosApp() {
           )}
           {view === "mutfak" && <Mutfak tables={tables} clockMin={clockMin} />}
           {view === "siramatik" && <Siramatik />}
-          {view === "menu" && <Menu />}
+          {view === "menu" && <Menu products={products} cats={cats} />}
+          {view === "menu_yonetim" && (
+            <MenuYonetim
+              products={products}
+              cats={cats}
+              onCreate={addProduct}
+              onUpdate={editProduct}
+              onDelete={removeProduct}
+            />
+          )}
           {view === "stok" && (
             <Stok
               stock={stock}
               recipes={recipes}
               setRecipes={setRecipes}
               onStockIn={stockIn}
+              products={products}
+              cats={cats}
             />
           )}
           {view === "personel" && (

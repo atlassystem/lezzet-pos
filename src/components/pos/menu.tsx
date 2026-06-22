@@ -1,28 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, Plus } from "lucide-react";
-import { CATS, PRODUCTS, TL } from "@/lib/pos-data";
+import { BookOpen } from "lucide-react";
+import { TL, type Product, type Category } from "@/lib/pos-data";
 import { Food } from "./food";
 import { catIcon } from "./glyphs";
-import { PrimaryButton, Tab, TopBar } from "./ui";
+import { Tab, TopBar } from "./ui";
 
-export function Menu() {
+export function Menu({
+  products,
+  cats,
+}: {
+  products: Product[];
+  cats: Category[];
+}) {
   const [cat, setCat] = useState("hepsi");
-  const list = PRODUCTS.filter((p) => (cat === "hepsi" ? true : p.cat === cat));
+  const list = products.filter((p) => (cat === "hepsi" ? true : p.cat === cat));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <TopBar
         title="Menü & Ürünler"
         icon={BookOpen}
-        sub={PRODUCTS.length + " ürün · " + CATS.length + " kategori"}
-        right={<PrimaryButton icon={Plus}>Yeni Ürün</PrimaryButton>}
+        sub={products.length + " ürün · " + cats.length + " kategori"}
       />
       <div className="mb-4 flex flex-wrap items-center gap-2 px-7">
         <Tab on={cat === "hepsi"} onClick={() => setCat("hepsi")}>
           Tümü
         </Tab>
-        {CATS.map((c) => {
+        {cats.map((c) => {
           const Ic = catIcon(c.id);
           return (
             <Tab key={c.id} on={cat === c.id} onClick={() => setCat(c.id)}>
@@ -44,7 +49,7 @@ export function Menu() {
                   {p.name}
                 </div>
                 <div className="mb-2 text-[11px] font-semibold text-ink3">
-                  {CATS.find((c) => c.id === p.cat)?.name} ·{" "}
+                  {cats.find((c) => c.id === p.cat)?.name} ·{" "}
                   {p.route === "bar" ? "Bar" : "Mutfak"}
                 </div>
                 <div className="flex items-center justify-between">

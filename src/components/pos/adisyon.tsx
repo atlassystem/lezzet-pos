@@ -14,10 +14,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  CATS,
   HALLS,
   KDV_ORAN,
-  PRODUCTS,
   TL,
   TLk,
   elapsed,
@@ -26,6 +24,8 @@ import {
   orderTotal,
   prodById,
   type Table,
+  type Product,
+  type Category,
 } from "@/lib/pos-data";
 import { Food } from "./food";
 import { catIcon } from "./glyphs";
@@ -40,6 +40,8 @@ export function Adisyon({
   askBill,
   payTable,
   clockMin,
+  products,
+  cats,
 }: {
   t: Table;
   onBack: () => void;
@@ -48,11 +50,13 @@ export function Adisyon({
   askBill: (no: string) => void;
   payTable: (no: string) => void;
   clockMin: number;
+  products: Product[];
+  cats: Category[];
 }) {
   const { canEdit } = usePerms();
-  const [cat, setCat] = useState(CATS[0].id);
+  const [cat, setCat] = useState(cats[0]?.id ?? "");
   const [q, setQ] = useState("");
-  const list = PRODUCTS.filter((p) =>
+  const list = products.filter((p) =>
     q ? p.name.toLowerCase().includes(q.toLowerCase()) : p.cat === cat,
   );
   const ara = orderTotal(t.items);
@@ -70,7 +74,7 @@ export function Adisyon({
           <ArrowLeft className="h-4 w-4" strokeWidth={2.4} />
           Masalar
         </button>
-        {CATS.map((c) => {
+        {cats.map((c) => {
           const on = !q && cat === c.id;
           const Ic = catIcon(c.id);
           return (

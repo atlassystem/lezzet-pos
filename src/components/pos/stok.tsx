@@ -18,9 +18,8 @@ import {
   SquarePen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CATS, PRODUCTS, TL, TLk, type Product } from "@/lib/pos-data";
+import { TL, TLk, type Product, type Category } from "@/lib/pos-data";
 import {
-  STOCK,
   STOCK_CATS,
   stockById,
   isLow,
@@ -39,11 +38,15 @@ export function Stok({
   recipes,
   setRecipes,
   onStockIn,
+  products,
+  cats,
 }: {
   stock: StockItem[];
   recipes: Record<string, RecipeLine[]>;
   setRecipes: Dispatch<SetStateAction<Record<string, RecipeLine[]>>>;
   onStockIn: (id: string, qty: number) => void;
+  products: Product[];
+  cats: Category[];
 }) {
   const { canEdit } = usePerms();
   const [tab, setTab] = useState<"envanter" | "recete">("envanter");
@@ -96,7 +99,13 @@ export function Stok({
       {tab === "envanter" ? (
         <Envanter stock={stock} />
       ) : (
-        <Receteler recipes={recipes} setRecipes={setRecipes} stock={stock} />
+        <Receteler
+          recipes={recipes}
+          setRecipes={setRecipes}
+          stock={stock}
+          products={products}
+          cats={cats}
+        />
       )}
     </div>
   );
@@ -202,17 +211,21 @@ function Receteler({
   recipes,
   setRecipes,
   stock,
+  products,
+  cats,
 }: {
   recipes: Record<string, RecipeLine[]>;
   setRecipes: Dispatch<SetStateAction<Record<string, RecipeLine[]>>>;
   stock: StockItem[];
+  products: Product[];
+  cats: Category[];
 }) {
   const { canEdit } = usePerms();
   const [cat, setCat] = useState("hepsi");
   const [editing, setEditing] = useState<Product | null>(null);
 
-  const list = PRODUCTS.filter((p) => (cat === "hepsi" ? true : p.cat === cat));
-  const withRecipe = PRODUCTS.filter((p) => (recipes[p.id]?.length ?? 0) > 0);
+  const list = products.filter((p) => (cat === "hepsi" ? true : p.cat === cat));
+  const withRecipe = products.filter((p) => (recipes[p.id]?.length ?? 0) > 0);
   const avgCost = withRecipe.length
     ? withRecipe.reduce((s, p) => s + recipeCost(recipes[p.id]), 0) / withRecipe.length
     : 0;
@@ -234,7 +247,7 @@ function Receteler({
   return (
     <>
       <div className="mb-4 grid grid-cols-3 gap-4 px-7">
-        <Stat icon={BookOpenCheck} label="Reçeteli Ürün" value={withRecipe.length + " / " + PRODUCTS.length} tone="orange" />
+        <Stat icon={BookOpenCheck} label="Reçeteli Ürün" value={withRecipe.length + " / " + products.length} tone="orange" />
         <Stat icon={ReceiptText} label="Ort. Maliyet" value={TL(avgCost)} tone="sky" />
         <Stat icon={Percent} label="Ort. Kâr Marjı" value={"%" + Math.round(avgMargin)} tone="green" />
       </div>
@@ -243,7 +256,7 @@ function Receteler({
         <Tab on={cat === "hepsi"} onClick={() => setCat("hepsi")}>
           Tümü
         </Tab>
-        {CATS.map((c) => (
+        {cats.map((c) => (
           <Tab key={c.id} on={cat === c.id} onClick={() => setCat(c.id)}>
             {c.name}
           </Tab>
@@ -258,6 +271,7 @@ function Receteler({
               p={p}
               lines={recipes[p.id] ?? []}
               stock={stock}
+              cats={cats}
               canEdit={canEdit}
               onEdit={() => setEditing(p)}
             />
@@ -269,6 +283,7 @@ function Receteler({
         <RecipeModal
           product={editing}
           initial={recipes[editing.id] ?? []}
+          stock={stock}
           onClose={() => setEditing(null)}
           onSave={(lines) => {
             saveRecipe(editing.id, lines);
@@ -296,12 +311,14 @@ function RecipeCard({
   p,
   lines,
   stock,
+  cats,
   canEdit,
   onEdit,
 }: {
   p: Product;
   lines: RecipeLine[];
   stock: StockItem[];
+  cats: Category[];
   canEdit: boolean;
   onEdit: () => void;
 }) {
@@ -317,7 +334,7 @@ function RecipeCard({
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-bold text-ink">{p.name}</div>
           <div className="text-[11px] font-semibold text-ink3">
-            {CATS.find((c) => c.id === p.cat)?.name} · {TLk(p.price)}₺
+            {cats.find((c) => c.id === p.cat)?.name} · {TLk(p.price)}₺
           </div>
         </div>
         {has && (
@@ -397,23 +414,25 @@ function RecipeCard({
 function RecipeModal({
   product,
   initial,
+  stock,
   onClose,
   onSave,
 }: {
   product: Product;
   initial: RecipeLine[];
+  stock: StockItem[];
   onClose: () => void;
   onSave: (lines: RecipeLine[]) => void;
 }) {
   const [lines, setLines] = useState<RecipeLine[]>(
-    initial.length ? initial.map((l) => ({ ...l })) : [{ stockId: STOCK[0].id, qty: 0.1 }],
+    initial.length ? initial.map((l) => ({ ...l })) : [{ stockId: stock[0]?.id ?? "", qty: 0.1 }],
   );
 
   const valid = lines.filter((l) => l.stockId && l.qty > 0);
   const cost = recipeCost(valid);
   const margin = product.price > 0 ? ((product.price - cost) / product.price) * 100 : 0;
 
-  const addLine = () => setLines((ls) => [...ls, { stockId: STOCK[0].id, qty: 0.1 }]);
+  const addLine = () => setLines((ls) => [...ls, { stockId: stock[0]?.id ?? "", qty: 0.1 }]);
   const update = (i: number, patch: Partial<RecipeLine>) =>
     setLines((ls) => ls.map((l, x) => (x === i ? { ...l, ...patch } : l)));
   const remove = (i: number) => setLines((ls) => ls.filter((_, x) => x !== i));
@@ -449,7 +468,7 @@ function RecipeModal({
                   onChange={(e) => update(i, { stockId: e.target.value })}
                   className="h-10 rounded-xl border border-line2 bg-surface2 px-3 text-sm font-semibold text-ink outline-none transition focus:border-brand/60 focus:bg-white"
                 >
-                  {STOCK.map((st) => (
+                  {stock.map((st) => (
                     <option key={st.id} value={st.id}>
                       {st.name} ({st.unit})
                     </option>

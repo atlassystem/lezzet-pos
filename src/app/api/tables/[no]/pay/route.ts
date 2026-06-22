@@ -35,24 +35,53 @@ export async function POST(
     const items = (table.items ?? []) as OrderItem[];
 
     if (items.length) {
-      // Fiyatları üründen al → sipariş satırlarını fiyatla dondur.
-      const products = await db
-        .collection("products")
-        .find(byTenant(), { projection: { _id: 0, id: 1, name: 1, price: 1 } })
-        .toArray();
+      // Fiyat (ürün), reçete (BOM) ve malzeme maliyeti (stok) tek seferde.
+      const [products, recipeDocs, stockDocs] = await Promise.all([
+        db
+          .collection("products")
+          .find(byTenant(), { projection: { _id: 0, id: 1, name: 1, price: 1 } })
+          .toArray(),
+        db
+          .collection("recipes")
+          .find(byTenant(), { projection: { _id: 0, restaurant_id: 0 } })
+          .toArray(),
+        db
+          .collection("stock")
+          .find(byTenant(), { projection: { _id: 0, id: 1, cost: 1 } })
+          .toArray(),
+      ]);
+
       const priceById = new Map(products.map((p) => [p.id, p]));
+      const recipes = recipeDocsToMap(
+        recipeDocs as unknown as { pid: string; lines: RecipeLine[] }[],
+      );
+      const costById = new Map<string, number>(
+        stockDocs.map((s) => [s.id as string, (s.cost as number) ?? 0]),
+      );
+      // Bir ürünün reçetesine göre birim malzeme maliyeti (Σ malzeme fiyatı × miktar).
+      const unitCost = (pid: string) =>
+        (recipes[pid] ?? []).reduce(
+          (s, l) => s + (costById.get(l.stockId) ?? 0) * l.qty,
+          0,
+        );
+      const r2 = (n: number) => Math.round(n * 100) / 100;
 
       const lines = items.map((it) => {
         const p = priceById.get(it.pid);
+        const uc = unitCost(it.pid);
         return {
           pid: it.pid,
           name: p?.name ?? it.pid,
           qty: it.qty,
           price: p?.price ?? 0,
           lineTotal: (p?.price ?? 0) * it.qty,
+          // Maliyet snapshot'ı (satış anındaki reçete maliyeti).
+          cost: r2(uc),
+          costTotal: r2(uc * it.qty),
         };
       });
       const total = lines.reduce((s, l) => s + l.lineTotal, 0);
+      const costTotal = r2(lines.reduce((s, l) => s + l.costTotal, 0));
       const kdv = Math.round((total - total / (1 + KDV_ORAN)) * 100) / 100;
       const paidAt = new Date();
 
@@ -65,6 +94,9 @@ export async function POST(
         subtotal: Math.round((total - kdv) * 100) / 100,
         kdv,
         total,
+        // Maliyet & kâr snapshot'ı (rapor ekranı bu fazda yok; yalnızca veri yazılır).
+        costTotal,
+        profit: r2(total - costTotal),
         method,
         paidAt,
       };
@@ -79,14 +111,7 @@ export async function POST(
         paidAt,
       });
 
-      // Stok düşümü (reçeteye göre).
-      const recipeDocs = await db
-        .collection("recipes")
-        .find(byTenant(), { projection: { _id: 0, restaurant_id: 0 } })
-        .toArray();
-      const recipes = recipeDocsToMap(
-        recipeDocs as unknown as { pid: string; lines: RecipeLine[] }[],
-      );
+      // Stok düşümü (yukarıda çekilen reçeteye göre).
       await consumeStockInDb(db, items, recipes);
     }
 
