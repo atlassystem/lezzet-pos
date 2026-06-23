@@ -49,14 +49,36 @@ export const stockById: Record<string, StockItem> = Object.fromEntries(
 export const stockValue = (s: StockItem) => s.qty * s.cost;
 export const isLow = (s: StockItem) => s.qty <= s.min;
 
-/* ---------- Reçeteler (menü ürünü → stok malzemeleri) ---------- */
+/* ---------- Reçeteler (menü ürünü → SEDNA malzemeleri) ----------
+   Faz 4b: reçete malzemesi artık Sedna maliyet kataloğundan gelir.
+   Satır = { sedna_code, name (snapshot), qty }. Maliyet CANLIDIR:
+   Σ(GÜNCEL sedna_products.unit_cost × qty). Sedna malzemesinde miktar/stok
+   takibi YOKTUR. */
 export interface RecipeLine {
-  stockId: string;
-  qty: number; // stok biriminde tüketilen miktar (örn. 0.25 kg)
+  /** Sedna ürün kodu — maliyet bununla anlık çözülür. */
+  sedna_code: string;
+  /** Ad snapshot'ı (görüntüleme için; maliyet her zaman güncel koddan gelir). */
+  name: string;
+  /** Reçetede kullanılan miktar (porsiyon başına). */
+  qty: number;
 }
 
-/** Ürün id → malzeme satırları. Tanımsız ürünlerin reçetesi yoktur. */
-export const RECIPES: Record<string, RecipeLine[]> = {
+/** Reçetenin CANLI malzeme maliyeti (₺): Σ(güncel birim maliyet × miktar). */
+export const recipeCost = (
+  lines: RecipeLine[],
+  costByCode: Record<string, number>,
+): number =>
+  lines.reduce((s, l) => s + (costByCode[l.sedna_code] ?? 0) * l.qty, 0);
+
+/* ---------- Eski (Sedna öncesi) stok-bazlı reçete — geri uyum için saklanır,
+   artık KULLANILMAZ (sökülmedi). ---------- */
+export interface StockRecipeLine {
+  stockId: string;
+  qty: number;
+}
+
+/** Eski demo reçeteleri (stok-bazlı). Artık seed edilmez/kullanılmaz. */
+export const RECIPES: Record<string, StockRecipeLine[]> = {
   // Başlangıç & Çorba
   p1: [{ stockId: "s8", qty: 0.3 }, { stockId: "s6", qty: 0.1 }, { stockId: "s11", qty: 0.02 }],
   p4: [{ stockId: "s5", qty: 0.15 }, { stockId: "s4", qty: 0.05 }],
@@ -80,18 +102,14 @@ export const RECIPES: Record<string, RecipeLine[]> = {
   d5: [{ stockId: "s14", qty: 0.004 }],
 };
 
-/** Reçetenin malzeme maliyeti toplamı (₺). */
-export const recipeCost = (lines: RecipeLine[]): number =>
-  lines.reduce((s, l) => s + (stockById[l.stockId]?.cost ?? 0) * l.qty, 0);
-
 /**
- * Sipariş kalemlerini reçeteye göre stoktan düşer; yeni stok dizisi döndürür.
- * Reçetesi olmayan ürünler stok tüketmez.
+ * (LEGACY — artık kullanılmaz) Sipariş kalemlerini eski stok-bazlı reçeteye göre
+ * stoktan düşer; yeni stok dizisi döndürür.
  */
 export const consumeStock = (
   stock: StockItem[],
   items: OrderItem[],
-  recipes: Record<string, RecipeLine[]>,
+  recipes: Record<string, StockRecipeLine[]>,
 ): StockItem[] => {
   const deduct: Record<string, number> = {};
   for (const it of items) {
@@ -112,7 +130,7 @@ export const consumeStock = (
  * Mevcut stokla bu reçeteden kaç porsiyon yapılabilir (limit malzemeye göre).
  * Reçete boşsa Infinity döner.
  */
-export const portionsPossible = (lines: RecipeLine[], stock: StockItem[]): number => {
+export const portionsPossible = (lines: StockRecipeLine[], stock: StockItem[]): number => {
   if (!lines.length) return Infinity;
   const byId: Record<string, StockItem> = Object.fromEntries(stock.map((s) => [s.id, s]));
   const counts = lines

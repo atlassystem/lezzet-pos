@@ -7,7 +7,7 @@ import {
   byTenant,
   PUBLIC_PROJ,
   recipeDocsToMap,
-  consumeStockInDb,
+  sednaCostMap,
   DEFAULT_BRANCH,
 } from "@/lib/server/repo";
 import { KDV_ORAN, type OrderItem } from "@/lib/pos-data";
@@ -37,8 +37,8 @@ export async function POST(
     const items = (table.items ?? []) as OrderItem[];
 
     if (items.length) {
-      // Fiyat (ürün), reçete (BOM) ve malzeme maliyeti (stok) tek seferde.
-      const [products, recipeDocs, stockDocs] = await Promise.all([
+      // Fiyat (ürün) ve reçete (Sedna malzemeli) tek seferde.
+      const [products, recipeDocs] = await Promise.all([
         db
           .collection("products")
           .find(byTenant(), { projection: { _id: 0, id: 1, name: 1, price: 1 } })
@@ -47,23 +47,22 @@ export async function POST(
           .collection("recipes")
           .find(byTenant(), { projection: { _id: 0, restaurant_id: 0 } })
           .toArray(),
-        db
-          .collection("stock")
-          .find(byTenant(), { projection: { _id: 0, id: 1, cost: 1 } })
-          .toArray(),
       ]);
 
       const priceById = new Map(products.map((p) => [p.id, p]));
       const recipes = recipeDocsToMap(
         recipeDocs as unknown as { pid: string; lines: RecipeLine[] }[],
       );
-      const costById = new Map<string, number>(
-        stockDocs.map((s) => [s.id as string, (s.cost as number) ?? 0]),
-      );
-      // Bir ürünün reçetesine göre birim malzeme maliyeti (Σ malzeme fiyatı × miktar).
+      // Satılan ürünlerin reçetelerinde geçen Sedna kodlarının CANLI birim maliyeti.
+      const soldPids = new Set(items.map((it) => it.pid));
+      const codes = Object.entries(recipes)
+        .filter(([pid]) => soldPids.has(pid))
+        .flatMap(([, lines]) => lines.map((l) => l.sedna_code));
+      const costByCode = await sednaCostMap(db, codes);
+      // Bir ürünün reçetesine göre birim maliyet (Σ Sedna birim maliyeti × miktar).
       const unitCost = (pid: string) =>
         (recipes[pid] ?? []).reduce(
-          (s, l) => s + (costById.get(l.stockId) ?? 0) * l.qty,
+          (s, l) => s + (costByCode[l.sedna_code] ?? 0) * l.qty,
           0,
         );
       const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -115,8 +114,7 @@ export async function POST(
         paidAt,
       });
 
-      // Stok düşümü (yukarıda çekilen reçeteye göre).
-      await consumeStockInDb(db, items, recipes);
+      // NOT: Sedna malzemesinde miktar/stok takibi yoktur → stok düşümü yapılmaz.
     }
 
     // Masayı sıfırla.

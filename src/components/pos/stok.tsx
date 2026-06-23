@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import {
   Boxes,
   Plus,
@@ -9,9 +9,9 @@ import {
   Wallet,
   Package,
   BookOpenCheck,
-  ChefHat,
   Percent,
   ReceiptText,
+  Search,
   X,
   Trash2,
   Check,
@@ -21,14 +21,14 @@ import { cn } from "@/lib/utils";
 import { TL, TLk, type Product, type Category } from "@/lib/pos-data";
 import {
   STOCK_CATS,
-  stockById,
   isLow,
   stockValue,
   recipeCost,
-  portionsPossible,
   type StockItem,
   type RecipeLine,
 } from "@/lib/pos-modules";
+import type { SednaProduct, SednaCostMap } from "@/lib/sedna";
+import { searchSedna } from "@/lib/pos-api";
 import { PrimaryButton, Stat, Tab, TopBar } from "./ui";
 import { usePerms } from "./perms";
 import { Food } from "./food";
@@ -40,6 +40,7 @@ export function Stok({
   onStockIn,
   products,
   cats,
+  sednaCosts,
 }: {
   stock: StockItem[];
   recipes: Record<string, RecipeLine[]>;
@@ -47,6 +48,7 @@ export function Stok({
   onStockIn: (id: string, qty: number) => void;
   products: Product[];
   cats: Category[];
+  sednaCosts: SednaCostMap;
 }) {
   const { canEdit } = usePerms();
   const [tab, setTab] = useState<"envanter" | "recete">("envanter");
@@ -102,9 +104,9 @@ export function Stok({
         <Receteler
           recipes={recipes}
           setRecipes={setRecipes}
-          stock={stock}
           products={products}
           cats={cats}
+          sednaCosts={sednaCosts}
         />
       )}
     </div>
@@ -210,28 +212,36 @@ function StockRow({ s }: { s: StockItem }) {
 function Receteler({
   recipes,
   setRecipes,
-  stock,
   products,
   cats,
+  sednaCosts,
 }: {
   recipes: Record<string, RecipeLine[]>;
   setRecipes: Dispatch<SetStateAction<Record<string, RecipeLine[]>>>;
-  stock: StockItem[];
   products: Product[];
   cats: Category[];
+  sednaCosts: SednaCostMap;
 }) {
   const { canEdit } = usePerms();
   const [cat, setCat] = useState("hepsi");
   const [editing, setEditing] = useState<Product | null>(null);
+  // Modalda arama ile keşfedilen maliyetler (henüz bootstrap'a girmemiş kodlar için).
+  const [discovered, setDiscovered] = useState<SednaCostMap>({});
+  // Canlı maliyet haritası = bootstrap (güncel) tabanı + oturumda keşfedilenler.
+  const costByCode = useMemo(
+    () => ({ ...sednaCosts, ...discovered }),
+    [sednaCosts, discovered],
+  );
+  const mergeCosts = (m: SednaCostMap) => setDiscovered((d) => ({ ...d, ...m }));
 
   const list = products.filter((p) => (cat === "hepsi" ? true : p.cat === cat));
   const withRecipe = products.filter((p) => (recipes[p.id]?.length ?? 0) > 0);
   const avgCost = withRecipe.length
-    ? withRecipe.reduce((s, p) => s + recipeCost(recipes[p.id]), 0) / withRecipe.length
+    ? withRecipe.reduce((s, p) => s + recipeCost(recipes[p.id], costByCode), 0) / withRecipe.length
     : 0;
   const avgMargin = withRecipe.length
     ? withRecipe.reduce((s, p) => {
-        const c = recipeCost(recipes[p.id]);
+        const c = recipeCost(recipes[p.id], costByCode);
         return s + (p.price > 0 ? ((p.price - c) / p.price) * 100 : 0);
       }, 0) / withRecipe.length
     : 0;
@@ -248,7 +258,7 @@ function Receteler({
     <>
       <div className="mb-4 grid grid-cols-3 gap-4 px-7">
         <Stat icon={BookOpenCheck} label="Reçeteli Ürün" value={withRecipe.length + " / " + products.length} tone="orange" />
-        <Stat icon={ReceiptText} label="Ort. Maliyet" value={TL(avgCost)} tone="sky" />
+        <Stat icon={ReceiptText} label="Ort. Maliyet (canlı)" value={TL(avgCost)} tone="sky" />
         <Stat icon={Percent} label="Ort. Kâr Marjı" value={"%" + Math.round(avgMargin)} tone="green" />
       </div>
 
@@ -270,8 +280,8 @@ function Receteler({
               key={p.id}
               p={p}
               lines={recipes[p.id] ?? []}
-              stock={stock}
               cats={cats}
+              costByCode={costByCode}
               canEdit={canEdit}
               onEdit={() => setEditing(p)}
             />
@@ -283,7 +293,8 @@ function Receteler({
         <RecipeModal
           product={editing}
           initial={recipes[editing.id] ?? []}
-          stock={stock}
+          costByCode={costByCode}
+          onCosts={mergeCosts}
           onClose={() => setEditing(null)}
           onSave={(lines) => {
             saveRecipe(editing.id, lines);
@@ -301,31 +312,24 @@ function marginTone(m: number) {
   return "bg-rose-100 text-rose-700";
 }
 
-function portionTone(n: number) {
-  if (n <= 0) return "bg-rose-100 text-rose-700";
-  if (n < 5) return "bg-amber-100 text-amber-700";
-  return "bg-emerald-100 text-emerald-700";
-}
-
 function RecipeCard({
   p,
   lines,
-  stock,
   cats,
+  costByCode,
   canEdit,
   onEdit,
 }: {
   p: Product;
   lines: RecipeLine[];
-  stock: StockItem[];
   cats: Category[];
+  costByCode: SednaCostMap;
   canEdit: boolean;
   onEdit: () => void;
 }) {
-  const cost = recipeCost(lines);
+  const cost = recipeCost(lines, costByCode);
   const margin = p.price > 0 ? ((p.price - cost) / p.price) * 100 : 0;
   const has = lines.length > 0;
-  const portions = has ? portionsPossible(lines, stock) : Infinity;
 
   return (
     <div className="pos-card flex flex-col p-4">
@@ -344,38 +348,19 @@ function RecipeCard({
         )}
       </div>
 
-      {/* Kalan porsiyon */}
-      {has && (
-        <div className={cn("mt-3 flex items-center justify-between rounded-xl px-3 py-2", portionTone(portions))}>
-          <span className="flex items-center gap-1.5 text-[11px] font-bold">
-            <ChefHat className="h-3.5 w-3.5" strokeWidth={2.4} />
-            Stokla yapılabilir
-          </span>
-          <span className="font-display tnum text-sm font-extrabold">
-            {portions <= 0 ? "Tükendi" : "≈ " + portions + " porsiyon"}
-          </span>
-        </div>
-      )}
-
-      {/* Malzemeler */}
+      {/* Malzemeler (Sedna) */}
       <div className="mt-3 flex-1">
         {has ? (
           <div className="flex flex-wrap gap-1.5">
-            {lines.map((l, i) => {
-              const s = stockById[l.stockId];
-              if (!s) return null;
-              return (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-1 rounded-lg bg-surface2 px-2 py-1 text-[11px] font-semibold text-ink2 ring-1 ring-line"
-                >
-                  {s.name}
-                  <span className="tnum text-ink3">
-                    {l.qty} {s.unit}
-                  </span>
-                </span>
-              );
-            })}
+            {lines.map((l, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 rounded-lg bg-surface2 px-2 py-1 text-[11px] font-semibold text-ink2 ring-1 ring-line"
+              >
+                {l.name}
+                <span className="tnum text-ink3">×{l.qty}</span>
+              </span>
+            ))}
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-line2 py-3 text-center text-[12px] text-ink3">
@@ -387,7 +372,7 @@ function RecipeCard({
       {/* Maliyet & aksiyon */}
       <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
         <div>
-          <div className="text-[10px] font-bold tracking-wide text-ink3 uppercase">Maliyet</div>
+          <div className="text-[10px] font-bold tracking-wide text-ink3 uppercase">Maliyet (canlı)</div>
           <div className="font-display tnum text-base font-extrabold text-ink">{TL(cost)}</div>
         </div>
         <button
@@ -409,32 +394,72 @@ function RecipeCard({
 }
 
 /* ============================================================
-   Reçete düzenleyici modalı — malzeme ekle/çıkar
+   Reçete düzenleyici modalı — malzeme SEDNA kataloğundan aranır.
+   Satır = { sedna_code, name, qty }. Maliyet canlı (Σ unit_cost × qty).
    ============================================================ */
 function RecipeModal({
   product,
   initial,
-  stock,
+  costByCode,
+  onCosts,
   onClose,
   onSave,
 }: {
   product: Product;
   initial: RecipeLine[];
-  stock: StockItem[];
+  costByCode: SednaCostMap;
+  onCosts: (m: SednaCostMap) => void;
   onClose: () => void;
   onSave: (lines: RecipeLine[]) => void;
 }) {
-  const [lines, setLines] = useState<RecipeLine[]>(
-    initial.length ? initial.map((l) => ({ ...l })) : [{ stockId: stock[0]?.id ?? "", qty: 0.1 }],
-  );
+  const [lines, setLines] = useState<RecipeLine[]>(initial.map((l) => ({ ...l })));
+  // Yerel canlı maliyet haritası: prop + arama ile keşfedilenler.
+  const [costs, setCosts] = useState<SednaCostMap>(() => ({ ...costByCode }));
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<SednaProduct[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const valid = lines.filter((l) => l.stockId && l.qty > 0);
-  const cost = recipeCost(valid);
+  // Sedna araması (debounce).
+  useEffect(() => {
+    const term = q.trim();
+    if (!term) {
+      setResults([]);
+      return;
+    }
+    let alive = true;
+    setLoading(true);
+    const t = setTimeout(() => {
+      searchSedna(term)
+        .then((r) => {
+          if (alive) setResults(r);
+        })
+        .finally(() => {
+          if (alive) setLoading(false);
+        });
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [q]);
+
+  const valid = lines.filter((l) => l.sedna_code && l.qty > 0);
+  const cost = recipeCost(valid, costs);
   const margin = product.price > 0 ? ((product.price - cost) / product.price) * 100 : 0;
 
-  const addLine = () => setLines((ls) => [...ls, { stockId: stock[0]?.id ?? "", qty: 0.1 }]);
-  const update = (i: number, patch: Partial<RecipeLine>) =>
-    setLines((ls) => ls.map((l, x) => (x === i ? { ...l, ...patch } : l)));
+  const addFromSedna = (sp: SednaProduct) => {
+    setCosts((c) => ({ ...c, [sp.code]: sp.unit_cost }));
+    onCosts({ [sp.code]: sp.unit_cost });
+    setLines((ls) =>
+      ls.some((l) => l.sedna_code === sp.code)
+        ? ls
+        : [...ls, { sedna_code: sp.code, name: sp.name, qty: 1 }],
+    );
+    setQ("");
+    setResults([]);
+  };
+  const updateQty = (i: number, qty: number) =>
+    setLines((ls) => ls.map((l, x) => (x === i ? { ...l, qty } : l)));
   const remove = (i: number) => setLines((ls) => ls.filter((_, x) => x !== i));
 
   return (
@@ -445,7 +470,7 @@ function RecipeModal({
             <Food img={product.img} emoji={product.emoji} grad={product.grad} className="h-10 w-10 rounded-xl" />
             <div className="leading-tight">
               <h3 className="font-display text-base font-extrabold text-ink">{product.name}</h3>
-              <div className="text-[11px] text-ink3">Reçete · satış {TLk(product.price)}₺</div>
+              <div className="text-[11px] text-ink3">Reçete · Sedna malzemeli · satış {TLk(product.price)}₺</div>
             </div>
           </div>
           <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-ink3 transition hover:bg-surface2 hover:text-ink">
@@ -453,38 +478,65 @@ function RecipeModal({
           </button>
         </div>
 
-        <div className="scroll-light flex-1 space-y-2 overflow-y-auto px-6 py-5">
-          <div className="grid grid-cols-[1fr_92px_36px] gap-2 px-1 text-[11px] font-bold tracking-wide text-ink3 uppercase">
+        <div className="scroll-light flex-1 space-y-3 overflow-y-auto px-6 py-5">
+          {/* Sedna malzeme arama */}
+          <div className="relative">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Sedna malzeme ara (kod veya ad)…"
+              className="h-11 w-full rounded-xl border border-line2 bg-surface2 pr-3 pl-9 text-sm font-semibold text-ink outline-none transition placeholder:font-normal placeholder:text-ink3 focus:border-brand/60 focus:bg-white"
+            />
+            <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-ink3" strokeWidth={2.2} />
+            {(results.length > 0 || loading) && (
+              <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-line bg-white shadow-xl">
+                {loading && <div className="px-3 py-2 text-[12px] text-ink3">Aranıyor…</div>}
+                {results.map((sp) => (
+                  <button
+                    key={sp.code}
+                    onClick={() => addFromSedna(sp)}
+                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition hover:bg-surface2"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold text-ink">{sp.name}</span>
+                      <span className="block text-[11px] text-ink3">Kod: {sp.code}</span>
+                    </span>
+                    <span className="tnum shrink-0 text-[12px] font-bold text-brand">{TL(sp.unit_cost)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Seçili malzemeler */}
+          <div className="grid grid-cols-[1fr_84px_84px_36px] gap-2 px-1 text-[11px] font-bold tracking-wide text-ink3 uppercase">
             <span>Malzeme</span>
-            <span>Miktar</span>
+            <span className="text-right">Miktar</span>
+            <span className="text-right">Tutar</span>
             <span />
           </div>
+          {lines.length === 0 && (
+            <div className="rounded-xl border border-dashed border-line2 py-4 text-center text-[12px] text-ink3">
+              Yukarıdan Sedna malzemesi arayıp ekleyin.
+            </div>
+          )}
           {lines.map((l, i) => {
-            const s = stockById[l.stockId];
+            const uc = costs[l.sedna_code] ?? 0;
             return (
-              <div key={i} className="grid grid-cols-[1fr_92px_36px] items-center gap-2">
-                <select
-                  value={l.stockId}
-                  onChange={(e) => update(i, { stockId: e.target.value })}
-                  className="h-10 rounded-xl border border-line2 bg-surface2 px-3 text-sm font-semibold text-ink outline-none transition focus:border-brand/60 focus:bg-white"
-                >
-                  {stock.map((st) => (
-                    <option key={st.id} value={st.id}>
-                      {st.name} ({st.unit})
-                    </option>
-                  ))}
-                </select>
-                <div className="flex items-center gap-1.5 rounded-xl border border-line2 bg-surface2 px-2.5 transition focus-within:border-brand/60 focus-within:bg-white">
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={l.qty}
-                    onChange={(e) => update(i, { qty: parseFloat(e.target.value) || 0 })}
-                    className="h-10 w-full bg-transparent text-sm font-semibold text-ink outline-none"
-                  />
-                  <span className="text-[11px] text-ink3">{s?.unit}</span>
+              <div key={l.sedna_code + i} className="grid grid-cols-[1fr_84px_84px_36px] items-center gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-ink">{l.name}</div>
+                  <div className="text-[10px] text-ink3">Kod {l.sedna_code} · {TL(uc)}/birim</div>
                 </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={l.qty}
+                  onChange={(e) => updateQty(i, parseFloat(e.target.value) || 0)}
+                  className="h-10 rounded-xl border border-line2 bg-surface2 px-2.5 text-right text-sm font-semibold text-ink outline-none transition focus:border-brand/60 focus:bg-white"
+                />
+                <span className="tnum text-right text-sm font-bold text-ink">{TL(uc * l.qty)}</span>
                 <button
                   onClick={() => remove(i)}
                   aria-label="Kaldır"
@@ -496,17 +548,9 @@ function RecipeModal({
             );
           })}
 
-          <button
-            onClick={addLine}
-            className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-line2 py-2.5 text-sm font-bold text-ink2 transition hover:border-brand/40 hover:bg-brand-soft/40 hover:text-brand"
-          >
-            <Plus className="h-4 w-4" strokeWidth={2.6} />
-            Malzeme Ekle
-          </button>
-
-          {/* Maliyet özeti */}
+          {/* Maliyet özeti (canlı) */}
           <div className="mt-2 grid grid-cols-3 gap-2 rounded-xl bg-surface2 p-3 text-center">
-            <Summary label="Maliyet" value={TL(cost)} />
+            <Summary label="Maliyet (canlı)" value={TL(cost)} />
             <Summary label="Satış" value={TLk(product.price) + "₺"} />
             <Summary
               label="Kâr Marjı"

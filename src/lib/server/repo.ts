@@ -10,11 +10,11 @@ import { getDb, RID } from "@/lib/mongo";
 import { CATS, PRODUCTS, HALLS, seedTables, type OrderItem } from "@/lib/pos-data";
 import {
   STOCK,
-  RECIPES,
   STAFF,
   BRANCHES,
   LEVELS,
   type RecipeLine,
+  type StockRecipeLine,
 } from "@/lib/pos-modules";
 
 /** Varsayılan/yedek şube kimliği (parametre gelmezse). */
@@ -47,6 +47,8 @@ export async function seedIfEmpty(db: Db): Promise<void> {
     db.collection("tables").createIndex({ restaurant_id: 1, branch_id: 1, no: 1 }, { unique: true }),
     db.collection("stock").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
     db.collection("recipes").createIndex({ restaurant_id: 1, pid: 1 }, { unique: true }),
+    // Sedna maliyet kataloğu — ORTAK (şube yok), code benzersiz.
+    db.collection("sedna_products").createIndex({ restaurant_id: 1, code: 1 }, { unique: true }),
     db.collection("personnel").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
     db.collection("roles").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
     db.collection("branches").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
@@ -73,10 +75,8 @@ export async function seedIfEmpty(db: Db): Promise<void> {
     seedColl("halls", HALLS),
     seedColl("tables", branchTables),
     seedColl("stock", STOCK),
-    seedColl(
-      "recipes",
-      Object.entries(RECIPES).map(([pid, lines]) => ({ pid, lines })),
-    ),
+    // Reçeteler artık Sedna malzemeli (boş başlar; kullanıcı bağlar).
+    // Eski stok-bazlı demo reçeteler seed EDİLMEZ.
     seedColl("personnel", STAFF),
     seedColl("branches", BRANCHES),
     seedColl(
@@ -93,11 +93,28 @@ export function recipeDocsToMap(
   return Object.fromEntries(docs.map((r) => [r.pid, r.lines]));
 }
 
-/** Sipariş kalemlerini reçeteye göre stoktan düşer (sunucu tarafı, DB'ye yazar). */
+/**
+ * Verilen Sedna kodları için güncel birim maliyet haritası (code → unit_cost).
+ * Reçete maliyeti CANLI olarak buradan hesaplanır.
+ */
+export async function sednaCostMap(
+  db: Db,
+  codes: string[],
+): Promise<Record<string, number>> {
+  const uniq = [...new Set(codes.filter(Boolean))];
+  if (!uniq.length) return {};
+  const docs = await db
+    .collection("sedna_products")
+    .find(byTenant({ code: { $in: uniq } }), { projection: { _id: 0, code: 1, unit_cost: 1 } })
+    .toArray();
+  return Object.fromEntries(docs.map((d) => [d.code as string, (d.unit_cost as number) ?? 0]));
+}
+
+/** (LEGACY — artık çağrılmaz) Eski stok-bazlı reçeteyle stok düşümü. */
 export async function consumeStockInDb(
   db: Db,
   items: OrderItem[],
-  recipes: Record<string, RecipeLine[]>,
+  recipes: Record<string, StockRecipeLine[]>,
 ): Promise<void> {
   const deduct: Record<string, number> = {};
   for (const it of items) {

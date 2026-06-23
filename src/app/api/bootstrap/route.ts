@@ -5,6 +5,7 @@ import {
   PUBLIC_PROJ,
   seedIfEmpty,
   recipeDocsToMap,
+  sednaCostMap,
   DEFAULT_BRANCH,
 } from "@/lib/server/repo";
 import type { RecipeLine } from "@/lib/pos-modules";
@@ -46,6 +47,10 @@ export async function GET(req: Request) {
       recipeDocs as unknown as { pid: string; lines: RecipeLine[] }[],
     );
 
+    // Reçetelerde geçen Sedna kodlarının GÜNCEL maliyeti (canlı reçete maliyeti için).
+    const codes = Object.values(recipes).flat().map((l) => l.sedna_code);
+    const sednaCosts = await sednaCostMap(db, codes);
+
     return Response.json({
       ok: true,
       tables,
@@ -56,6 +61,7 @@ export async function GET(req: Request) {
       recipes,
       staff,
       branches,
+      sednaCosts,
     });
   } catch (err) {
     console.error("[bootstrap] hata:", err);

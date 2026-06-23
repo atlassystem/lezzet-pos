@@ -13,9 +13,7 @@ import {
 import {
   STAFF,
   STOCK,
-  RECIPES,
   BRANCHES,
-  consumeStock,
   userModules,
   userCanEdit,
   type Staff,
@@ -24,6 +22,7 @@ import {
   type ModuleId,
   type Branch,
 } from "@/lib/pos-modules";
+import type { SednaCostMap } from "@/lib/sedna";
 import {
   fetchBootstrap,
   saveTable,
@@ -68,9 +67,11 @@ export function PosApp() {
   const [products, setProducts] = useState<Product[]>(() => [...PRODUCTS]);
   const [cats, setCats] = useState<Category[]>(() => [...CATS]);
 
-  // Stok & reçeteler (ödeme alınınca reçeteye göre stok düşer)
+  // Stok (eski demo Envanter tablosu) + reçeteler (Sedna malzemeli, DB'den).
   const [stock, setStock] = useState<StockItem[]>(STOCK);
-  const [recipes, setRecipesState] = useState<Record<string, RecipeLine[]>>(RECIPES);
+  const [recipes, setRecipesState] = useState<Record<string, RecipeLine[]>>({});
+  // Reçetelerde geçen Sedna kodlarının güncel birim maliyeti (canlı maliyet).
+  const [sednaCosts, setSednaCosts] = useState<SednaCostMap>({});
 
   // Personel & aktif kullanıcı (yetkilendirme)
   const [staff, setStaffState] = useState<Staff[]>(STAFF);
@@ -99,6 +100,7 @@ export function PosApp() {
         }
         if (d.stock?.length) setStock(d.stock);
         if (d.recipes) setRecipesState(d.recipes);
+        if (d.sednaCosts) setSednaCosts(d.sednaCosts);
         if (d.staff?.length) setStaffState(d.staff);
         if (d.branches?.length) setBranches(d.branches);
       })
@@ -222,11 +224,7 @@ export function PosApp() {
     });
 
   const payTable = async (no: string) => {
-    // Optimistik: yerelde stok düş + masayı sıfırla (anında geri bildirim).
-    const paid = tables.find((t) => t.no === no);
-    if (paid && paid.items.length) {
-      setStock((s) => consumeStock(s, paid.items, recipes));
-    }
+    // Optimistik: masayı anında sıfırla. (Sedna malzemesinde stok düşümü yok.)
     setTables((ts) =>
       ts.map((t) =>
         t.no === no
@@ -327,6 +325,7 @@ export function PosApp() {
               onStockIn={stockIn}
               products={products}
               cats={cats}
+              sednaCosts={sednaCosts}
             />
           )}
           {view === "personel" && (

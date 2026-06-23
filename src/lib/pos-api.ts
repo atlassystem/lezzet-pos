@@ -6,6 +6,7 @@
 
 import type { Table, Product, Category } from "./pos-data";
 import type { StockItem, RecipeLine, Staff, Branch } from "./pos-modules";
+import type { SednaProduct, SednaCostMap } from "./sedna";
 
 export interface Bootstrap {
   tables: Table[];
@@ -15,6 +16,8 @@ export interface Bootstrap {
   recipes: Record<string, RecipeLine[]>;
   staff: Staff[];
   branches: Branch[];
+  /** Reçetelerde geçen Sedna kodlarının güncel birim maliyeti (canlı). */
+  sednaCosts: SednaCostMap;
 }
 
 const json = (method: string, body?: unknown): RequestInit => ({
@@ -38,7 +41,19 @@ export async function fetchBootstrap(branch?: string): Promise<Bootstrap> {
     recipes: d.recipes,
     staff: d.staff,
     branches: d.branches,
+    sednaCosts: d.sednaCosts ?? {},
   };
+}
+
+/* ---------- Sedna maliyet kataloğu (reçete malzeme araması) ---------- */
+/** code/ad ile Sedna ürünü arar (reçete malzemesi seçimi için). */
+export async function searchSedna(q: string): Promise<SednaProduct[]> {
+  const res = await fetch(`/api/sedna/products?q=${encodeURIComponent(q)}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) return [];
+  const d = await res.json();
+  return Array.isArray(d.products) ? d.products : [];
 }
 
 /* ---------- Ürün CRUD (Menü Yönetimi) ---------- */
