@@ -10,6 +10,9 @@ import {
   Coffee,
   ShieldCheck,
   SquarePen,
+  KeyRound,
+  Eye,
+  EyeOff,
   X,
   Check,
 } from "lucide-react";
@@ -24,6 +27,7 @@ import {
   type AccessLevel,
   type ModuleId,
 } from "@/lib/pos-modules";
+import { setStaffCredentials } from "@/lib/pos-api";
 import { PrimaryButton, Stat, TopBar } from "./ui";
 
 export function Personel({
@@ -37,6 +41,8 @@ export function Personel({
 }) {
   // null = kapalı, "new" = ekleme, Staff = düzenleme
   const [editing, setEditing] = useState<Staff | "new" | null>(null);
+  // Kimlik (kullanıcı adı + şifre) belirleme modalı için seçili personel.
+  const [credsFor, setCredsFor] = useState<Staff | null>(null);
 
   const aktif = staff.filter((s) => s.state !== "cikis");
   const vardiyada = staff.filter((s) => s.state === "vardiyada");
@@ -77,7 +83,13 @@ export function Personel({
       <div className="scroll-light overflow-y-auto px-7 pb-7">
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {staff.map((u) => (
-            <StaffCard key={u.id} u={u} canManage={canManage} onEdit={() => setEditing(u)} />
+            <StaffCard
+              key={u.id}
+              u={u}
+              canManage={canManage}
+              onEdit={() => setEditing(u)}
+              onCreds={() => setCredsFor(u)}
+            />
           ))}
         </div>
       </div>
@@ -92,6 +104,18 @@ export function Personel({
           }}
         />
       )}
+
+      {credsFor && (
+        <CredsModal
+          staff={credsFor}
+          onClose={() => setCredsFor(null)}
+          onSaved={(username) => {
+            // Görüntüleme için yerel kullanıcı adını güncelle (hash istemcide tutulmaz).
+            upsert({ ...credsFor, username });
+            setCredsFor(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -100,10 +124,12 @@ function StaffCard({
   u,
   canManage,
   onEdit,
+  onCreds,
 }: {
   u: Staff;
   canManage: boolean;
   onEdit: () => void;
+  onCreds: () => void;
 }) {
   const sh = SHIFT[u.state];
   const lvl = LEVELS[u.level];
@@ -151,17 +177,37 @@ function StaffCard({
               {lvl.label}
             </span>
             {canManage && (
-              <button
-                onClick={onEdit}
-                aria-label="Düzenle"
-                className="grid h-6 w-6 place-items-center rounded-lg text-ink3 transition hover:bg-white hover:text-brand"
-              >
-                <SquarePen className="h-3.5 w-3.5" strokeWidth={2.2} />
-              </button>
+              <>
+                <button
+                  onClick={onCreds}
+                  aria-label="Kullanıcı adı / şifre"
+                  title="Kullanıcı adı / şifre belirle"
+                  className="grid h-6 w-6 place-items-center rounded-lg text-ink3 transition hover:bg-white hover:text-brand"
+                >
+                  <KeyRound className="h-3.5 w-3.5" strokeWidth={2.2} />
+                </button>
+                <button
+                  onClick={onEdit}
+                  aria-label="Düzenle"
+                  className="grid h-6 w-6 place-items-center rounded-lg text-ink3 transition hover:bg-white hover:text-brand"
+                >
+                  <SquarePen className="h-3.5 w-3.5" strokeWidth={2.2} />
+                </button>
+              </>
             )}
           </div>
         </div>
         <div className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-ink3">{scopeLabel}</div>
+        <div className="mt-1.5 flex items-center gap-1 text-[11px] font-semibold">
+          <KeyRound className="h-3 w-3 shrink-0 text-ink3" strokeWidth={2.2} />
+          {u.username ? (
+            <span className="text-ink2">
+              Giriş: <span className="font-bold text-ink">{u.username}</span>
+            </span>
+          ) : (
+            <span className="text-ink3">Giriş tanımsız</span>
+          )}
+        </div>
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">
@@ -354,6 +400,125 @@ function StaffModal({
           >
             <Check className="h-4 w-4" strokeWidth={2.6} />
             Kaydet
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Kimlik (kullanıcı adı + şifre) belirleme — admin. Şifre bcrypt (sunucuda).
+   ============================================================ */
+function CredsModal({
+  staff,
+  onClose,
+  onSaved,
+}: {
+  staff: Staff;
+  onClose: () => void;
+  onSaved: (username: string) => void;
+}) {
+  const [username, setUsername] = useState(staff.username ?? "");
+  const [password, setPassword] = useState("");
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const valid = username.trim().length >= 2 && password.length >= 4;
+
+  const save = async () => {
+    if (!valid || busy) return;
+    setBusy(true);
+    setErr("");
+    const r = await setStaffCredentials(staff.id, username.trim(), password);
+    setBusy(false);
+    if (r.ok) {
+      onSaved(username.trim());
+    } else if (r.error === "username_taken") {
+      setErr("Bu kullanıcı adı başka personelde kullanılıyor.");
+    } else if (r.error === "weak_password") {
+      setErr("Şifre en az 4 karakter olmalı.");
+    } else {
+      setErr("Kaydedilemedi. Tekrar deneyin.");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 grid place-items-center bg-ink/40 p-4 backdrop-blur-sm">
+      <div className="pop flex w-full max-w-md flex-col overflow-hidden rounded-[1.25rem] bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-line px-6 py-4">
+          <h3 className="flex items-center gap-2 font-display text-lg font-extrabold text-ink">
+            <KeyRound className="h-5 w-5 text-brand" strokeWidth={2.2} />
+            Giriş Bilgileri
+          </h3>
+          <button
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-lg text-ink3 transition hover:bg-surface2 hover:text-ink"
+          >
+            <X className="h-4.5 w-4.5" strokeWidth={2.2} />
+          </button>
+        </div>
+
+        <div className="space-y-4 px-6 py-5">
+          <div className="text-[13px] text-ink2">
+            <span className="font-bold text-ink">{staff.name}</span> için kullanıcı adı ve şifre belirle.
+          </div>
+
+          <Field label="Kullanıcı Adı">
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Örn. ayse"
+              autoComplete="off"
+              className="w-full bg-transparent text-sm text-ink placeholder:text-ink3 outline-none"
+            />
+          </Field>
+
+          <Field label="Yeni Şifre">
+            <input
+              type={show ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="En az 4 karakter"
+              autoComplete="new-password"
+              className="w-full bg-transparent text-sm text-ink placeholder:text-ink3 outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => setShow((s) => !s)}
+              className="text-ink3 transition hover:text-ink2"
+              aria-label="Şifreyi göster/gizle"
+            >
+              {show ? <EyeOff className="h-4.5 w-4.5" strokeWidth={2} /> : <Eye className="h-4.5 w-4.5" strokeWidth={2} />}
+            </button>
+          </Field>
+
+          <p className="rounded-xl bg-surface2 px-3 py-2.5 text-[11px] leading-snug text-ink3">
+            Şifre güvenli biçimde (bcrypt) saklanır, hiçbir yerde düz metin gösterilmez.
+          </p>
+
+          {err && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[13px] font-semibold text-rose-600">
+              {err}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-line px-6 py-4">
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-line2 bg-white px-4 py-2.5 text-sm font-bold text-ink2 transition hover:bg-surface2 hover:text-ink"
+          >
+            Vazgeç
+          </button>
+          <button
+            onClick={save}
+            disabled={!valid || busy}
+            className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white shadow-sm shadow-brand/30 transition hover:bg-brand2 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Check className="h-4 w-4" strokeWidth={2.6} />
+            {busy ? "Kaydediliyor…" : "Kaydet"}
           </button>
         </div>
       </div>

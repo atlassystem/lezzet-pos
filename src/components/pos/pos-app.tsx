@@ -33,6 +33,8 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  meApi,
+  logoutApi,
 } from "@/lib/pos-api";
 import { Sidebar, type View } from "./sidebar";
 import { PermsProvider, ReadOnlyBanner } from "./perms";
@@ -51,7 +53,9 @@ import { Ayarlar } from "./ayarlar";
 import { Login } from "./login";
 
 export function PosApp() {
-  const [authed, setAuthed] = useState(false);
+  // Gerçek auth: oturum çerezinden gelen kullanıcı. null = giriş yapılmamış.
+  const [authUser, setAuthUser] = useState<Staff | null>(null);
+  const [authChecked, setAuthChecked] = useState(false); // /me tamamlandı mı
   const [view, setView] = useState<View>("masalar");
   const [tables, setTables] = useState<Table[]>(seedTables);
   const [activeHall, setActiveHall] = useState("ic");
@@ -73,18 +77,36 @@ export function PosApp() {
   // Reçetelerde geçen Sedna kodlarının güncel birim maliyeti (canlı maliyet).
   const [sednaCosts, setSednaCosts] = useState<SednaCostMap>({});
 
-  // Personel & aktif kullanıcı (yetkilendirme)
+  // Personel listesi (admin yönetimi için); aktif kullanıcı ise authUser.
   const [staff, setStaffState] = useState<Staff[]>(STAFF);
-  const [currentUserId, setCurrentUserId] = useState("u5"); // Can Aydın · Admin
-  const currentUser = staff.find((s) => s.id === currentUserId) ?? staff[0];
-  const modules = userModules(currentUser);
-  const canEdit = userCanEdit(currentUser);
+  const currentUser = authUser;
+  const modules = currentUser ? userModules(currentUser) : [];
+  const canEdit = currentUser ? userCanEdit(currentUser) : false;
+
+  // Açılışta oturumu kontrol et (/api/auth/me). Varsa kullanıcı + şubeyi al.
+  useEffect(() => {
+    let alive = true;
+    meApi()
+      .then((r) => {
+        if (!alive) return;
+        if (r) {
+          setAuthUser(r.user);
+          if (r.branch) setActiveBranch(r.branch);
+        }
+      })
+      .finally(() => {
+        if (alive) setAuthChecked(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Giriş yapıldıktan sonra (ve şube değişince) kalıcı veriyi DB'den çek
   // (gerekirse seed eder). Masalar AKTİF ŞUBEYE göre gelir; katalog ortaktır.
   // Hata olursa demo veriyle çalışmaya devam eder (uygulama çökmez).
   useEffect(() => {
-    if (!authed) return;
+    if (!authUser) return;
     let alive = true;
     fetchBootstrap(activeBranch)
       .then((d) => {
@@ -108,7 +130,7 @@ export function PosApp() {
     return () => {
       alive = false;
     };
-  }, [authed, activeBranch]);
+  }, [authUser, activeBranch]);
 
   useEffect(() => {
     const i = setInterval(() => setClockMin((c) => c + 0.5), 30000);
@@ -117,12 +139,12 @@ export function PosApp() {
 
   // Kullanıcı değişince, erişimi olmayan bir modüldeyse ilk izinli modüle düş.
   useEffect(() => {
-    if (!modules.includes(view as ModuleId)) {
+    if (currentUser && modules.length && !modules.includes(view as ModuleId)) {
       setView(modules[0] as View);
       setOpenNo(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUserId]);
+  }, [authUser?.id]);
 
   // Çocuk bileşenler bu setter'larla yazar; her değişiklik DB'ye kalıcı yazılır.
   const setRecipes: Dispatch<SetStateAction<Record<string, RecipeLine[]>>> = (action) =>
@@ -250,16 +272,27 @@ export function PosApp() {
     setActiveBranch(id);
   };
 
+  // Çıkış: oturum çerezini temizle, login'e dön.
+  const onLogout = async () => {
+    await logoutApi();
+    setOpenNo(null);
+    setView("masalar");
+    setAuthUser(null);
+  };
+
   const openTableObj = tables.find((t) => t.no === openNo);
   // Masa Planı ve Garson Terminali, açık masada ortak Adisyon ekranını paylaşır.
   const inAdisyon = openTableObj && (view === "masalar" || view === "garson");
 
-  if (!authed)
+  // Oturum kontrolü tamamlanana kadar boş ekran (login yanıp sönmesin).
+  if (!authChecked) return <div className="h-screen w-screen bg-[#e6e6e8]" />;
+
+  if (!authUser)
     return (
       <Login
-        onLogin={(branchId) => {
-          setActiveBranch(branchId);
-          setAuthed(true);
+        onAuthenticated={(user, branch) => {
+          setActiveBranch(branch);
+          setAuthUser(user);
         }}
       />
     );
@@ -270,9 +303,8 @@ export function PosApp() {
         <Sidebar
           view={view}
           setView={goView}
-          user={currentUser}
-          users={staff}
-          onSwitchUser={setCurrentUserId}
+          user={authUser}
+          onLogout={onLogout}
           allowed={modules}
           branches={branches}
           activeBranchId={activeBranch}
@@ -332,7 +364,7 @@ export function PosApp() {
             <Personel
               staff={staff}
               setStaff={setStaff}
-              canManage={currentUser.level === "admin"}
+              canManage={authUser.level === "admin"}
             />
           )}
           {view === "rapor" && (

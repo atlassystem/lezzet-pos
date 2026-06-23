@@ -6,6 +6,7 @@
    Seed idempotent: koleksiyon o kiracı için boşsa bir kez yükler.
    ============================================================ */
 import type { Db } from "mongodb";
+import bcrypt from "bcryptjs";
 import { getDb, RID } from "@/lib/mongo";
 import { CATS, PRODUCTS, HALLS, seedTables, type OrderItem } from "@/lib/pos-data";
 import {
@@ -20,10 +21,14 @@ import {
 /** Varsayılan/yedek şube kimliği (parametre gelmezse). */
 export const DEFAULT_BRANCH = BRANCHES[0].id;
 
+/** İlk giriş için varsayılan admin kimliği (seed). Kullanıcı sonra değiştirir. */
+export const DEFAULT_ADMIN_USERNAME = "admin";
+export const DEFAULT_ADMIN_PASSWORD = "Orwion!2026";
+
 export { getDb, RID };
 
-/** İstemciye dönen kayıtlardan iç alanları gizle. */
-export const PUBLIC_PROJ = { _id: 0, restaurant_id: 0 } as const;
+/** İstemciye dönen kayıtlardan iç alanları gizle (şifre hash'i ASLA dönmez). */
+export const PUBLIC_PROJ = { _id: 0, restaurant_id: 0, passwordHash: 0 } as const;
 
 /** Kiracı filtresi. */
 export const byTenant = (extra: Record<string, unknown> = {}) => ({
@@ -50,6 +55,11 @@ export async function seedIfEmpty(db: Db): Promise<void> {
     // Sedna maliyet kataloğu — ORTAK (şube yok), code benzersiz.
     db.collection("sedna_products").createIndex({ restaurant_id: 1, code: 1 }, { unique: true }),
     db.collection("personnel").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
+    // Giriş kullanıcı adı benzersiz (yalnızca username taşıyan kayıtlar için).
+    db.collection("personnel").createIndex(
+      { restaurant_id: 1, username: 1 },
+      { unique: true, partialFilterExpression: { username: { $type: "string" } } },
+    ),
     db.collection("roles").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
     db.collection("branches").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
     // Order/payment'lar şubeye göre raporlanabilsin diye branch_id ile indeksli.
@@ -84,6 +94,29 @@ export async function seedIfEmpty(db: Db): Promise<void> {
       Object.entries(LEVELS).map(([id, v]) => ({ id, ...v })),
     ),
   ]);
+
+  await ensureDefaultAdmin(db);
+}
+
+/**
+ * İlk giriş için bir admin kimliği garanti eder (idempotent).
+ * "admin" kullanıcı adı yoksa, admin seviyesindeki kullanıcıya (yoksa ilk
+ * kullanıcıya) username="admin" + bcrypt(varsayılan şifre) atar.
+ * Düz şifre saklanmaz; yalnızca hash.
+ */
+async function ensureDefaultAdmin(db: Db): Promise<void> {
+  const coll = db.collection("personnel");
+  const existing = await coll.findOne(byTenant({ username: DEFAULT_ADMIN_USERNAME }));
+  if (existing) return;
+  const target =
+    (await coll.findOne(byTenant({ level: "admin" }))) ??
+    (await coll.findOne(byTenant()));
+  if (!target) return;
+  const passwordHash = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 10);
+  await coll.updateOne(
+    byTenant({ id: target.id }),
+    { $set: { username: DEFAULT_ADMIN_USERNAME, passwordHash } },
+  );
 }
 
 /** recipes koleksiyon belgelerini istemcinin beklediği Record<pid, lines>'a çevirir. */

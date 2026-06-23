@@ -216,6 +216,8 @@ export interface Staff {
   name: string;
   role: string;
   initials: string;
+  /** Giriş kullanıcı adı (benzersiz). Şifre HASH'i istemciye DÖNMEZ. */
+  username?: string;
   state: ShiftState;
   clockIn: string | null; // "09:00"
   hoursToday: number;

@@ -21,6 +21,7 @@ import {
   TicketCheck,
   Check,
   ShieldCheck,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BRAND } from "@/lib/brand";
@@ -67,8 +68,7 @@ export function Sidebar({
   view,
   setView,
   user,
-  users,
-  onSwitchUser,
+  onLogout,
   allowed,
   branches,
   activeBranchId,
@@ -77,14 +77,12 @@ export function Sidebar({
   view: View;
   setView: (v: View) => void;
   user: Staff;
-  users: Staff[];
-  onSwitchUser: (id: string) => void;
+  onLogout: () => void;
   allowed: ModuleId[];
   branches: Branch[];
   activeBranchId: string;
   onSwitchBranch: (id: string) => void;
 }) {
-  const [switcher, setSwitcher] = useState(false);
   const [branchOpen, setBranchOpen] = useState(false);
   const lvl = LEVELS[user.level];
   const activeBranch =
@@ -259,55 +257,10 @@ export function Sidebar({
         </button>
       </nav>
 
-      {/* Kullanıcı + değiştirici (demo) */}
-      <div className="relative border-t border-line px-3 py-3">
-        {switcher && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setSwitcher(false)} />
-            <div className="absolute bottom-[68px] left-3 right-3 z-20 overflow-hidden rounded-2xl border border-line bg-white shadow-xl">
-              <div className="border-b border-line px-3 py-2 text-[10px] font-bold tracking-wide text-ink3 uppercase">
-                Kullanıcı değiştir (demo)
-              </div>
-              <div className="max-h-72 overflow-y-auto p-1.5">
-                {users.map((u) => {
-                  const ul = LEVELS[u.level];
-                  const sel = u.id === user.id;
-                  return (
-                    <button
-                      key={u.id}
-                      onClick={() => {
-                        onSwitchUser(u.id);
-                        setSwitcher(false);
-                      }}
-                      className={cn(
-                        "flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition",
-                        sel ? "bg-brand-soft" : "hover:bg-surface2",
-                      )}
-                    >
-                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-orange-400 to-brand text-[11px] font-bold text-white">
-                        {u.initials}
-                      </div>
-                      <div className="min-w-0 flex-1 leading-tight">
-                        <div className="truncate text-[13px] font-bold text-ink">{u.name}</div>
-                        <div className="truncate text-[11px] text-ink3">{u.role}</div>
-                      </div>
-                      <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold", ul.chip)}>
-                        {ul.label}
-                      </span>
-                      {sel && <Check className="h-4 w-4 shrink-0 text-brand" strokeWidth={2.6} />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
-
-        <button
-          onClick={() => setSwitcher((s) => !s)}
-          className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-surface2"
-        >
-          <div className="relative grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-orange-400 to-brand text-xs font-bold text-white">
+      {/* Aktif kullanıcı + Çıkış */}
+      <div className="border-t border-line px-3 py-3">
+        <div className="flex items-center gap-3 rounded-xl px-2 py-2">
+          <div className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-orange-400 to-brand text-xs font-bold text-white">
             {user.initials}
             <span
               className="absolute -right-0 -bottom-0 h-2.5 w-2.5 rounded-full border-2 border-white"
@@ -321,8 +274,15 @@ export function Sidebar({
               <span className="truncate">{lvl.label}</span>
             </div>
           </div>
-          <ChevronsUpDown className="h-4 w-4 shrink-0 text-ink3" strokeWidth={2} />
-        </button>
+          <button
+            onClick={onLogout}
+            aria-label="Çıkış"
+            title="Çıkış"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-line2 bg-white text-ink3 transition hover:bg-rose-50 hover:text-rose-600"
+          >
+            <LogOut className="h-4 w-4" strokeWidth={2.2} />
+          </button>
+        </div>
       </div>
     </aside>
   );
