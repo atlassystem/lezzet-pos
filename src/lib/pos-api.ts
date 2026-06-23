@@ -5,7 +5,7 @@
 "use client";
 
 import type { Table, Product, Category } from "./pos-data";
-import type { StockItem, RecipeLine, Staff } from "./pos-modules";
+import type { StockItem, RecipeLine, Staff, Branch } from "./pos-modules";
 
 export interface Bootstrap {
   tables: Table[];
@@ -14,6 +14,7 @@ export interface Bootstrap {
   stock: StockItem[];
   recipes: Record<string, RecipeLine[]>;
   staff: Staff[];
+  branches: Branch[];
 }
 
 const json = (method: string, body?: unknown): RequestInit => ({
@@ -22,9 +23,11 @@ const json = (method: string, body?: unknown): RequestInit => ({
   body: body === undefined ? undefined : JSON.stringify(body),
 });
 
-/** Mount'ta tüm POS durumunu DB'den çeker (gerekirse seed eder). */
-export async function fetchBootstrap(): Promise<Bootstrap> {
-  const res = await fetch("/api/bootstrap", { cache: "no-store" });
+/** Tüm POS durumunu DB'den çeker (gerekirse seed eder). Masalar AKTİF ŞUBEYE
+ *  göre filtrelenir; katalog (ürün/kategori/reçete/stok) ortaktır. */
+export async function fetchBootstrap(branch?: string): Promise<Bootstrap> {
+  const qs = branch ? `?branch=${encodeURIComponent(branch)}` : "";
+  const res = await fetch(`/api/bootstrap${qs}`, { cache: "no-store" });
   if (!res.ok) throw new Error("bootstrap_failed");
   const d = await res.json();
   return {
@@ -34,6 +37,7 @@ export async function fetchBootstrap(): Promise<Bootstrap> {
     stock: d.stock,
     recipes: d.recipes,
     staff: d.staff,
+    branches: d.branches,
   };
 }
 
@@ -65,17 +69,24 @@ export async function deleteProduct(id: string): Promise<boolean> {
   return res.ok;
 }
 
-/** Bir masanın tüm durumunu kaydeder (ürün ekle/çıkar, hesap iste). */
+/** Bir masanın tüm durumunu kaydeder (ürün ekle/çıkar, hesap iste). branch_id
+ *  masa nesnesinde taşınır; ayrıca güvence için query'ye de eklenir. */
 export async function saveTable(table: Table): Promise<void> {
-  await fetch(`/api/tables/${encodeURIComponent(table.no)}`, json("PUT", table));
+  const qs = table.branch_id ? `?branch=${encodeURIComponent(table.branch_id)}` : "";
+  await fetch(`/api/tables/${encodeURIComponent(table.no)}${qs}`, json("PUT", table));
 }
 
-/** Ödeme alır: order+payment kaydı, stok düşümü; sıfırlanmış masa + güncel stok döner. */
+/** Ödeme alır: order+payment kaydı (branch_id ile), stok düşümü; sıfırlanmış masa + güncel stok döner. */
 export async function payTableApi(
   no: string,
   method = "nakit",
+  branch?: string,
 ): Promise<{ table: Table | null; stock: StockItem[] | null }> {
-  const res = await fetch(`/api/tables/${encodeURIComponent(no)}/pay`, json("POST", { method }));
+  const qs = branch ? `?branch=${encodeURIComponent(branch)}` : "";
+  const res = await fetch(
+    `/api/tables/${encodeURIComponent(no)}/pay${qs}`,
+    json("POST", { method }),
+  );
   if (!res.ok) return { table: null, stock: null };
   const d = await res.json();
   return { table: d.table ?? null, stock: d.stock ?? null };

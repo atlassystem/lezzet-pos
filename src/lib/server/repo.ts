@@ -17,6 +17,9 @@ import {
   type RecipeLine,
 } from "@/lib/pos-modules";
 
+/** Varsayılan/yedek şube kimliği (parametre gelmezse). */
+export const DEFAULT_BRANCH = BRANCHES[0].id;
+
 export { getDb, RID };
 
 /** İstemciye dönen kayıtlardan iç alanları gizle. */
@@ -40,14 +43,16 @@ export async function seedIfEmpty(db: Db): Promise<void> {
     db.collection("categories").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
     db.collection("products").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
     db.collection("halls").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
-    db.collection("tables").createIndex({ restaurant_id: 1, no: 1 }, { unique: true }),
+    // Masalar şubeye göre ayrı: aynı masa no'su her şubede ayrı kayıt.
+    db.collection("tables").createIndex({ restaurant_id: 1, branch_id: 1, no: 1 }, { unique: true }),
     db.collection("stock").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
     db.collection("recipes").createIndex({ restaurant_id: 1, pid: 1 }, { unique: true }),
     db.collection("personnel").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
     db.collection("roles").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
     db.collection("branches").createIndex({ restaurant_id: 1, id: 1 }, { unique: true }),
-    db.collection("orders").createIndex({ restaurant_id: 1, paidAt: -1 }),
-    db.collection("payments").createIndex({ restaurant_id: 1, paidAt: -1 }),
+    // Order/payment'lar şubeye göre raporlanabilsin diye branch_id ile indeksli.
+    db.collection("orders").createIndex({ restaurant_id: 1, branch_id: 1, paidAt: -1 }),
+    db.collection("payments").createIndex({ restaurant_id: 1, branch_id: 1, paidAt: -1 }),
   ]);
 
   const seedColl = async (name: string, docs: object[]) => {
@@ -57,11 +62,16 @@ export async function seedIfEmpty(db: Db): Promise<void> {
     }
   };
 
+  // Her şube KENDİ masa setiyle başlar (aynı seed, branch_id ile etiketli).
+  const branchTables = BRANCHES.flatMap((b) =>
+    seedTables().map((t) => ({ ...t, branch_id: b.id })),
+  );
+
   await Promise.all([
     seedColl("categories", CATS),
     seedColl("products", PRODUCTS),
     seedColl("halls", HALLS),
-    seedColl("tables", seedTables()),
+    seedColl("tables", branchTables),
     seedColl("stock", STOCK),
     seedColl(
       "recipes",

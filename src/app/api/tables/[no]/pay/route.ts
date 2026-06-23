@@ -8,6 +8,7 @@ import {
   PUBLIC_PROJ,
   recipeDocsToMap,
   consumeStockInDb,
+  DEFAULT_BRANCH,
 } from "@/lib/server/repo";
 import { KDV_ORAN, type OrderItem } from "@/lib/pos-data";
 import type { RecipeLine } from "@/lib/pos-modules";
@@ -21,13 +22,14 @@ export async function POST(
 ) {
   try {
     const { no } = await params;
+    const branch_id = new URL(req.url).searchParams.get("branch") || DEFAULT_BRANCH;
     const method = await req
       .json()
       .then((b) => (b?.method as string) || "nakit")
       .catch(() => "nakit");
 
     const db = await getDb();
-    const table = await db.collection("tables").findOne(byTenant({ no }));
+    const table = await db.collection("tables").findOne(byTenant({ no, branch_id }));
     if (!table) {
       return Response.json({ ok: false, error: "table_not_found" }, { status: 404 });
     }
@@ -87,6 +89,7 @@ export async function POST(
 
       const orderDoc = {
         restaurant_id: RID,
+        branch_id,
         tableNo: no,
         hall: table.hall,
         waiter: table.waiter ?? null,
@@ -104,6 +107,7 @@ export async function POST(
 
       await db.collection("payments").insertOne({
         restaurant_id: RID,
+        branch_id,
         orderId: insertedId,
         tableNo: no,
         amount: total,
@@ -122,10 +126,10 @@ export async function POST(
       startedAt: null,
       waiter: null,
     };
-    await db.collection("tables").updateOne(byTenant({ no }), { $set: reset });
+    await db.collection("tables").updateOne(byTenant({ no, branch_id }), { $set: reset });
 
     const [freshTable, stock] = await Promise.all([
-      db.collection("tables").findOne(byTenant({ no }), { projection: PUBLIC_PROJ }),
+      db.collection("tables").findOne(byTenant({ no, branch_id }), { projection: PUBLIC_PROJ }),
       db.collection("stock").find(byTenant(), { projection: PUBLIC_PROJ }).toArray(),
     ]);
 

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, EyeOff, User, Mail, Lock, UtensilsCrossed } from "lucide-react";
+import { Eye, EyeOff, User, Mail, Lock, UtensilsCrossed, Store } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BRAND } from "@/lib/brand";
+import { BRANCHES } from "@/lib/pos-modules";
 
 /* ============================================================
    Orwion POS — Giriş / Kayıt ekranı (D.CC referansı)
@@ -32,11 +33,14 @@ const MOSAIC = [
 const img = (id: string) =>
   `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=420&q=70`;
 
-export function Login({ onLogin }: { onLogin: () => void }) {
+export function Login({ onLogin }: { onLogin: (branchId: string) => void }) {
   const [show, setShow] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
+  // Giriş yapılacak şube (Snack Bar / Plaj Bar). Seçilen şube aktif şube olur.
+  const [branch, setBranch] = useState(BRANCHES[0].id);
+  const login = () => onLogin(branch);
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-[#e6e6e8] p-4 font-sans text-ink sm:p-8">
@@ -63,7 +67,7 @@ export function Login({ onLogin }: { onLogin: () => void }) {
               Zaten hesabınız var mı?{" "}
               <button
                 type="button"
-                onClick={onLogin}
+                onClick={login}
                 className="font-bold text-brand hover:underline"
               >
                 Giriş yapın
@@ -76,9 +80,37 @@ export function Login({ onLogin }: { onLogin: () => void }) {
             className="mx-auto mt-8 w-full max-w-sm space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              onLogin();
+              login();
             }}
           >
+            {/* Şube seçimi — giriş yapılan şube aktif şube olur */}
+            <div>
+              <span className="mb-1.5 block text-[12.5px] font-semibold text-ink2">
+                Şube
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                {BRANCHES.map((b) => {
+                  const on = branch === b.id;
+                  return (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => setBranch(b.id)}
+                      className={cn(
+                        "flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-bold transition",
+                        on
+                          ? "border-brand bg-brand text-white shadow-sm shadow-brand/30"
+                          : "border-line2 bg-surface2 text-ink2 hover:bg-white hover:text-ink",
+                      )}
+                    >
+                      <Store className="h-4 w-4" strokeWidth={2.2} />
+                      {b.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <Field label="Ad Soyad" icon={User}>
               <input
                 value={name}
@@ -150,10 +182,10 @@ export function Login({ onLogin }: { onLogin: () => void }) {
 
           {/* Sosyal giriş */}
           <div className="mx-auto w-full max-w-sm space-y-3">
-            <SocialButton onClick={onLogin} logo={<GoogleMark />}>
+            <SocialButton onClick={login} logo={<GoogleMark />}>
               Google ile devam et
             </SocialButton>
-            <SocialButton onClick={onLogin} logo={<AppleMark />}>
+            <SocialButton onClick={login} logo={<AppleMark />}>
               Apple ile devam et
             </SocialButton>
           </div>

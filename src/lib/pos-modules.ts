@@ -243,9 +243,8 @@ export interface Branch {
 }
 
 export const BRANCHES: Branch[] = [
-  { id: "b1", name: "Merkez Şube", city: "İstanbul / Kadıköy", active: true, todaySales: 38420, tables: 17 },
-  { id: "b2", name: "Sahil Şube", city: "İstanbul / Bostancı", active: true, todaySales: 29150, tables: 22 },
-  { id: "b3", name: "AVM Şube", city: "İstanbul / Ataşehir", active: false, todaySales: 0, tables: 14 },
+  { id: "snack", name: "Snack Bar", city: "Havuz Başı", active: true, todaySales: 0, tables: 18 },
+  { id: "plaj", name: "Plaj Bar", city: "Sahil", active: true, todaySales: 0, tables: 18 },
 ];
 
 /* ---------- Yapılacaklar / Yakında modülleri ---------- */

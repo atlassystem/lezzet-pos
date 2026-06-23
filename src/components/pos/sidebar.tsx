@@ -23,7 +23,16 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BRAND } from "@/lib/brand";
-import { LEVELS, SHIFT, type ModuleId, type Staff } from "@/lib/pos-modules";
+import { LEVELS, SHIFT, type ModuleId, type Staff, type Branch } from "@/lib/pos-modules";
+
+/** Şube adından kısa rozet (örn. "Snack Bar" → "SB"). */
+const branchInitials = (name: string) =>
+  name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
 export type View = ModuleId;
 
@@ -63,6 +72,9 @@ export function Sidebar({
   users,
   onSwitchUser,
   allowed,
+  branches,
+  activeBranchId,
+  onSwitchBranch,
 }: {
   view: View;
   setView: (v: View) => void;
@@ -70,9 +82,15 @@ export function Sidebar({
   users: Staff[];
   onSwitchUser: (id: string) => void;
   allowed: ModuleId[];
+  branches: Branch[];
+  activeBranchId: string;
+  onSwitchBranch: (id: string) => void;
 }) {
   const [switcher, setSwitcher] = useState(false);
+  const [branchOpen, setBranchOpen] = useState(false);
   const lvl = LEVELS[user.level];
+  const activeBranch =
+    branches.find((b) => b.id === activeBranchId) ?? branches[0];
 
   return (
     <aside className="flex w-[256px] shrink-0 flex-col border-r border-line bg-panel">
@@ -87,20 +105,61 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* Şube seçici */}
-      <div className="px-3 pb-1">
+      {/* Şube seçici — aktif şubeyi gösterir; buradan şube değiştirilebilir */}
+      <div className="relative px-3 pb-1">
         <div className="px-2 pt-1 pb-1.5 text-[11px] font-bold tracking-wide text-ink3 uppercase">
           Şube
         </div>
-        <button className="flex w-full items-center gap-2.5 rounded-xl border border-line2 bg-surface2 px-2.5 py-2 text-left transition hover:bg-white">
+        <button
+          onClick={() => setBranchOpen((s) => !s)}
+          className="flex w-full items-center gap-2.5 rounded-xl border border-line2 bg-surface2 px-2.5 py-2 text-left transition hover:bg-white"
+        >
           <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-soft text-[11px] font-bold text-brand">
-            MŞ
+            {activeBranch ? branchInitials(activeBranch.name) : "—"}
           </div>
           <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink">
-            Merkez Şube
+            {activeBranch?.name ?? "Şube seç"}
           </span>
           <ChevronsUpDown className="h-4 w-4 shrink-0 text-ink3" strokeWidth={2} />
         </button>
+
+        {branchOpen && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setBranchOpen(false)} />
+            <div className="absolute left-3 right-3 z-20 mt-1 overflow-hidden rounded-2xl border border-line bg-white shadow-xl">
+              <div className="border-b border-line px-3 py-2 text-[10px] font-bold tracking-wide text-ink3 uppercase">
+                Şube değiştir
+              </div>
+              <div className="p-1.5">
+                {branches.map((b) => {
+                  const sel = b.id === activeBranchId;
+                  return (
+                    <button
+                      key={b.id}
+                      onClick={() => {
+                        if (!sel) onSwitchBranch(b.id);
+                        setBranchOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition",
+                        sel ? "bg-brand-soft" : "hover:bg-surface2",
+                      )}
+                    >
+                      <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-soft text-[11px] font-bold text-brand">
+                        {branchInitials(b.name)}
+                      </div>
+                      <div className="min-w-0 flex-1 leading-tight">
+                        <div className="truncate text-[13px] font-bold text-ink">{b.name}</div>
+                        <div className="truncate text-[11px] text-ink3">{b.city}</div>
+                      </div>
+                      {sel && <Check className="h-4 w-4 shrink-0 text-brand" strokeWidth={2.6} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Navigasyon — kullanıcı yetkisine göre filtreli */}

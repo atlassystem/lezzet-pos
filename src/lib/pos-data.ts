@@ -48,6 +48,8 @@ export interface Table {
   /** Açılış anındaki clockMin; boş/rezerve masada null. */
   startedAt: number | null;
   waiter: string | null;
+  /** Hangi şubeye ait (operasyon şubeye göre ayrı). DB'den gelir. */
+  branch_id?: string;
 }
 
 export interface Hall {

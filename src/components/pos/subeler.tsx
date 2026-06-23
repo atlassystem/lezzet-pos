@@ -29,7 +29,7 @@ export function Subeler() {
       <div className="scroll-light overflow-y-auto px-7 pb-7">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {BRANCHES.map((b) => (
-            <BranchCard key={b.id} b={b} max={Math.max(...BRANCHES.map((x) => x.todaySales))} />
+            <BranchCard key={b.id} b={b} max={Math.max(1, ...BRANCHES.map((x) => x.todaySales))} />
           ))}
         </div>
       </div>

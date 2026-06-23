@@ -14,6 +14,7 @@ import {
   STAFF,
   STOCK,
   RECIPES,
+  BRANCHES,
   consumeStock,
   userModules,
   userCanEdit,
@@ -21,6 +22,7 @@ import {
   type StockItem,
   type RecipeLine,
   type ModuleId,
+  type Branch,
 } from "@/lib/pos-modules";
 import {
   fetchBootstrap,
@@ -55,6 +57,10 @@ export function PosApp() {
   const [tables, setTables] = useState<Table[]>(seedTables);
   const [activeHall, setActiveHall] = useState("ic");
   const [openNo, setOpenNo] = useState<string | null>(null);
+
+  // Şubeler & aktif şube — operasyon (masalar/ödeme) aktif şubeye göre ayrı.
+  const [branches, setBranches] = useState<Branch[]>(() => [...BRANCHES]);
+  const [activeBranch, setActiveBranch] = useState(BRANCHES[0].id);
   // SSR-güvenli dakika saati: sunucuda 0, mount sonrası ilerler.
   const [clockMin, setClockMin] = useState(0);
 
@@ -73,14 +79,17 @@ export function PosApp() {
   const modules = userModules(currentUser);
   const canEdit = userCanEdit(currentUser);
 
-  // Mount'ta kalıcı veriyi DB'den çek (gerekirse seed eder). Hata olursa
-  // demo veriyle çalışmaya devam eder (uygulama çökmez).
+  // Giriş yapıldıktan sonra (ve şube değişince) kalıcı veriyi DB'den çek
+  // (gerekirse seed eder). Masalar AKTİF ŞUBEYE göre gelir; katalog ortaktır.
+  // Hata olursa demo veriyle çalışmaya devam eder (uygulama çökmez).
   useEffect(() => {
+    if (!authed) return;
     let alive = true;
-    fetchBootstrap()
+    fetchBootstrap(activeBranch)
       .then((d) => {
         if (!alive) return;
-        if (d.tables?.length) setTables(d.tables);
+        // Aktif şubenin masaları (boş şubede de listeyi değiştir → karışmasın).
+        setTables(d.tables ?? []);
         // Ürün/kategoriyi hem React state'ine hem de modül dizilerine (statik
         // import eden ekranlar için) yaz.
         if (d.products?.length || d.categories?.length) {
@@ -91,12 +100,13 @@ export function PosApp() {
         if (d.stock?.length) setStock(d.stock);
         if (d.recipes) setRecipesState(d.recipes);
         if (d.staff?.length) setStaffState(d.staff);
+        if (d.branches?.length) setBranches(d.branches);
       })
       .catch((e) => console.warn("[pos] bootstrap başarısız, demo veriyle devam:", e));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [authed, activeBranch]);
 
   useEffect(() => {
     const i = setInterval(() => setClockMin((c) => c + 0.5), 30000);
@@ -225,8 +235,8 @@ export function PosApp() {
       ),
     );
     setOpenNo(null);
-    // Kalıcı: sunucuda order+payment kaydı + stok düşümü. Sunucu otoritatif.
-    const { stock: freshStock } = await payTableApi(no);
+    // Kalıcı: sunucuda order+payment kaydı (aktif şube) + stok düşümü. Sunucu otoritatif.
+    const { stock: freshStock } = await payTableApi(no, "nakit", activeBranch);
     if (freshStock) setStock(freshStock);
   };
 
@@ -235,11 +245,26 @@ export function PosApp() {
     setOpenNo(null);
   };
 
+  // Şube değiştir: açık adisyonu kapat; effect yeni şubenin masalarını yükler.
+  const switchBranch = (id: string) => {
+    if (id === activeBranch) return;
+    setOpenNo(null);
+    setActiveBranch(id);
+  };
+
   const openTableObj = tables.find((t) => t.no === openNo);
   // Masa Planı ve Garson Terminali, açık masada ortak Adisyon ekranını paylaşır.
   const inAdisyon = openTableObj && (view === "masalar" || view === "garson");
 
-  if (!authed) return <Login onLogin={() => setAuthed(true)} />;
+  if (!authed)
+    return (
+      <Login
+        onLogin={(branchId) => {
+          setActiveBranch(branchId);
+          setAuthed(true);
+        }}
+      />
+    );
 
   return (
     <PermsProvider canEdit={canEdit}>
@@ -251,6 +276,9 @@ export function PosApp() {
           users={staff}
           onSwitchUser={setCurrentUserId}
           allowed={modules}
+          branches={branches}
+          activeBranchId={activeBranch}
+          onSwitchBranch={switchBranch}
         />
         <main className="flex min-w-0 flex-1 flex-col">
           {!canEdit && <ReadOnlyBanner />}
