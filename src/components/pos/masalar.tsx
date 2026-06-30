@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutGrid, Wallet, Utensils, Timer, Armchair, UserRound, Clock } from "lucide-react";
+import { LayoutGrid, Wallet, Utensils, Timer, Armchair, UserRound, Clock, BellRing } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   HALLS,
@@ -19,12 +19,15 @@ export function Masalar({
   setActiveHall,
   onOpen,
   clockMin,
+  alerts,
 }: {
   tables: Table[];
   activeHall: string;
   setActiveHall: (h: string) => void;
   onOpen: (no: string) => void;
   clockMin: number;
+  /** Yeni QR siparişi gelen masa no'ları (rozet + vurgu için). */
+  alerts?: Set<string>;
 }) {
   const all = tables;
   const hallTables = tables.filter((t) => t.hall === activeHall);
@@ -98,7 +101,13 @@ export function Masalar({
       <div className="scroll-light overflow-y-auto px-7 pb-7">
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {hallTables.map((t) => (
-            <TableCard key={t.no} t={t} onOpen={onOpen} clockMin={clockMin} />
+            <TableCard
+              key={t.no}
+              t={t}
+              onOpen={onOpen}
+              clockMin={clockMin}
+              alert={alerts?.has(t.no) ?? false}
+            />
           ))}
         </div>
       </div>
@@ -110,10 +119,13 @@ function TableCard({
   t,
   onOpen,
   clockMin,
+  alert,
 }: {
   t: Table;
   onOpen: (no: string) => void;
   clockMin: number;
+  /** Bu masaya yeni QR siparişi geldi mi (rozet + vurgu). */
+  alert?: boolean;
 }) {
   const s = STATUS[t.status];
   const total = orderTotal(t.items);
@@ -122,10 +134,16 @@ function TableCard({
     <button
       onClick={() => onOpen(t.no)}
       className={cn(
-        "pos-card lift overflow-hidden border-2 text-left",
-        s.ring,
+        "pos-card lift relative overflow-hidden border-2 text-left",
+        alert ? "border-rose-500 ring-2 ring-rose-300" : s.ring,
       )}
     >
+      {alert && (
+        <span className="absolute top-2 right-2 z-10 inline-flex animate-pulse items-center gap-1 rounded-full bg-rose-500 px-2 py-1 text-[11px] font-bold text-white shadow-md shadow-rose-500/40">
+          <BellRing className="h-3 w-3" strokeWidth={2.6} />
+          Yeni
+        </span>
+      )}
       <div className={cn("flex items-start justify-between px-4 pt-4 pb-3", s.soft)}>
         <div>
           <div className="text-[11px] font-bold tracking-wide text-ink3 uppercase">

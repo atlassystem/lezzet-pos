@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import {
   seedTables,
   hydrateMenu,
@@ -27,6 +33,7 @@ import type { SednaCostMap } from "@/lib/sedna";
 import { OKC_AKTIF, buildOkcFis, sendToOkc } from "@/lib/okc";
 import {
   fetchBootstrap,
+  fetchTables,
   saveTable,
   payTableApi,
   saveRecipes,
@@ -60,6 +67,33 @@ import { Subeler } from "./subeler";
 import { Ayarlar } from "./ayarlar";
 import { Login } from "./login";
 
+/** Kısa bildirim sesi (WebAudio — ek dosya yok). Tarayıcı sesi engellerse sessiz. */
+function beep() {
+  try {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext })
+        .webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.type = "sine";
+    o.frequency.setValueAtTime(880, ctx.currentTime);
+    o.frequency.setValueAtTime(1175, ctx.currentTime + 0.12);
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+    o.start();
+    o.stop(ctx.currentTime + 0.42);
+    o.onended = () => ctx.close();
+  } catch {
+    /* ses çalınamadıysa sorun değil */
+  }
+}
+
 export function PosApp() {
   // Gerçek auth: oturum çerezinden gelen kullanıcı. null = giriş yapılmamış.
   const [authUser, setAuthUser] = useState<Staff | null>(null);
@@ -68,6 +102,20 @@ export function PosApp() {
   const [tables, setTables] = useState<Table[]>(seedTables);
   const [activeHall, setActiveHall] = useState("ic");
   const [openNo, setOpenNo] = useState<string | null>(null);
+
+  // --- Canlı yenileme + QR sipariş bildirimi ---
+  // Yeni sipariş gelen masa no'ları (rozet/vurgu için; masa açılınca temizlenir).
+  const [alertTables, setAlertTables] = useState<Set<string>>(() => new Set());
+  // Ekranda gösterilen bildirim balonları.
+  const [notes, setNotes] = useState<{ id: number; no: string }[]>([]);
+  // Son görülen masa → toplam adet imzası (artış = yeni sipariş tespiti).
+  const sigRef = useRef<Map<string, number>>(new Map());
+  const noteId = useRef(0);
+  // Açık adisyonun no'su, yoklama kapanışında güncel okunsun diye ref.
+  const openNoRef = useRef<string | null>(null);
+  useEffect(() => {
+    openNoRef.current = openNo;
+  }, [openNo]);
 
   // Şubeler & aktif şube — operasyon (masalar/ödeme) aktif şubeye göre ayrı.
   const [branches, setBranches] = useState<Branch[]>(() => [...BRANCHES]);
@@ -123,7 +171,15 @@ export function PosApp() {
       .then((d) => {
         if (!alive) return;
         // Aktif şubenin masaları (boş şubede de listeyi değiştir → karışmasın).
-        setTables(d.tables ?? []);
+        const freshTables = d.tables ?? [];
+        setTables(freshTables);
+        // Bildirim taban imzası: ilk yüklemede mevcut siparişler "yeni" sayılmasın.
+        const sig = new Map<string, number>();
+        for (const t of freshTables) {
+          sig.set(t.no, (t.items ?? []).reduce((s: number, i) => s + i.qty, 0));
+        }
+        sigRef.current = sig;
+        setAlertTables(new Set());
         // Ürün/kategoriyi hem React state'ine hem de modül dizilerine (statik
         // import eden ekranlar için) yaz.
         if (d.products?.length || d.categories?.length) {
@@ -158,6 +214,54 @@ export function PosApp() {
       alive = false;
     };
   }, []);
+
+  // CANLI YENİLEME + QR SİPARİŞ BİLDİRİMİ: aktif şubenin masalarını her 7 sn'de
+  // bir sessizce çeker; bir masanın toplam adedi arttıysa = yeni sipariş →
+  // rozet + balon + ses. Açık adisyon (personel düzenliyor) yerelde kalır
+  // (anlık kaydedildiği için sunucu zaten güncel; titreme olmasın diye ezilmez).
+  useEffect(() => {
+    if (!authUser) return;
+    let alive = true;
+    const tick = async () => {
+      const fresh = await fetchTables(activeBranch);
+      if (!alive || !fresh) return;
+      const prevSig = sigRef.current;
+      const nextSig = new Map<string, number>();
+      const newOrders: string[] = [];
+      for (const t of fresh) {
+        const q = (t.items ?? []).reduce((s, i) => s + i.qty, 0);
+        nextSig.set(t.no, q);
+        const prev = prevSig.get(t.no);
+        if (prev !== undefined && q > prev) newOrders.push(t.no);
+      }
+      sigRef.current = nextSig;
+      const curOpen = openNoRef.current;
+      // Masaları güncelle; açık adisyon yerelde kalsın.
+      setTables((cur) =>
+        fresh.map((t) =>
+          t.no === curOpen ? cur.find((c) => c.no === t.no) ?? t : t,
+        ),
+      );
+      // Açık masaya gelen sipariş zaten ekranda; onun için rozet/balon gösterme.
+      const toAlert = newOrders.filter((no) => no !== curOpen);
+      if (toAlert.length) {
+        setAlertTables((s) => {
+          const n = new Set(s);
+          toAlert.forEach((x) => n.add(x));
+          return n;
+        });
+        setNotes((ns) =>
+          [...ns, ...toAlert.map((no) => ({ id: ++noteId.current, no }))].slice(-4),
+        );
+        beep();
+      }
+    };
+    const i = setInterval(tick, 7000);
+    return () => {
+      alive = false;
+      clearInterval(i);
+    };
+  }, [authUser, activeBranch]);
 
   // Kullanıcı değişince, erişimi olmayan bir modüldeyse ilk izinli modüle düş.
   useEffect(() => {
@@ -284,6 +388,9 @@ export function PosApp() {
     if (!cur) return;
     const updated = fn({ ...cur, items: cur.items.map((i) => ({ ...i })) });
     setTables((ts) => ts.map((t) => (t.no === no ? updated : t)));
+    // İmzayı yerel değişiklikle eşitle → personelin kendi eklemesi "yeni QR
+    // sipariş" gibi yanlış bildirim üretmesin.
+    sigRef.current.set(no, updated.items.reduce((s, i) => s + i.qty, 0));
     void saveTable(updated);
   };
 
@@ -327,6 +434,8 @@ export function PosApp() {
           : t,
       ),
     );
+    // Ödenen masa sıfırlandı → imza 0 (sonraki yoklama yanlış alarm vermesin).
+    sigRef.current.set(no, 0);
     setOpenNo(null);
     // Kalıcı: sunucuda order+payment kaydı (aktif şube) + stok düşümü. Sunucu otoritatif.
     const { stock: freshStock } = await payTableApi(no, "nakit", activeBranch);
@@ -336,6 +445,25 @@ export function PosApp() {
       void sendToOkc(buildOkcFis(paying, "nakit", activeBranch));
     }
   };
+
+  // Masa aç: açılınca o masanın "yeni sipariş" rozetini + balonunu temizle.
+  const openTable = (no: string) => {
+    setOpenNo(no);
+    setAlertTables((s) => {
+      if (!s.has(no)) return s;
+      const n = new Set(s);
+      n.delete(no);
+      return n;
+    });
+    setNotes((ns) => ns.filter((x) => x.no !== no));
+  };
+
+  // Bildirim balonlarını bir süre sonra otomatik kapat (rozet masada kalır).
+  useEffect(() => {
+    if (!notes.length) return;
+    const t = setTimeout(() => setNotes((ns) => ns.slice(1)), 8000);
+    return () => clearTimeout(t);
+  }, [notes]);
 
   const goView = (v: View) => {
     setView(v);
@@ -412,12 +540,13 @@ export function PosApp() {
               tables={tables}
               activeHall={activeHall}
               setActiveHall={setActiveHall}
-              onOpen={setOpenNo}
+              onOpen={openTable}
               clockMin={clockMin}
+              alerts={alertTables}
             />
           )}
           {!inAdisyon && view === "garson" && (
-            <Garson tables={tables} onOpen={setOpenNo} clockMin={clockMin} />
+            <Garson tables={tables} onOpen={openTable} clockMin={clockMin} />
           )}
           {view === "mutfak" && <Mutfak tables={tables} clockMin={clockMin} />}
           {view === "siramatik" && <Siramatik />}
@@ -466,6 +595,38 @@ export function PosApp() {
           {view === "subeler" && <Subeler />}
           {view === "ayarlar" && <Ayarlar />}
         </main>
+
+        {/* QR sipariş bildirim balonları (sağ üst). Tıkla → masaya git. */}
+        {notes.length > 0 && (
+          <div className="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2">
+            {notes.map((n) => {
+              const tbl = tables.find((t) => t.no === n.no);
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => {
+                    if (tbl) setActiveHall(tbl.hall);
+                    setView("masalar");
+                    openTable(n.no);
+                  }}
+                  className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-rose-200 bg-white px-4 py-3 text-left shadow-xl shadow-rose-500/10 ring-1 ring-rose-100 transition hover:bg-rose-50"
+                >
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-rose-500 text-base text-white">
+                    🔔
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-extrabold text-ink">
+                      Masa {n.no} — yeni QR sipariş
+                    </span>
+                    <span className="block text-[12px] font-semibold text-rose-600">
+                      Görmek için tıkla
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </PermsProvider>
   );

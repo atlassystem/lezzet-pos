@@ -45,6 +45,21 @@ export async function fetchBootstrap(branch?: string): Promise<Bootstrap> {
   };
 }
 
+/** Bir şubenin masalarını çeker (hafif yoklama — canlı yenileme + QR bildirimi).
+ *  Bootstrap'in tamamını çekmeden yalnız masaları getirir. */
+export async function fetchTables(branch: string): Promise<Table[] | null> {
+  try {
+    const res = await fetch(`/api/tables?branch=${encodeURIComponent(branch)}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const d = await res.json();
+    return Array.isArray(d.tables) ? d.tables : null;
+  } catch {
+    return null;
+  }
+}
+
 /* ---------- Raporlar ---------- */
 export interface ReportSummary {
   revenue: number;
