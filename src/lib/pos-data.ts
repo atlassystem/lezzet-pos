@@ -56,6 +56,11 @@ export interface Product {
   meat?: string;
   /** Ayrıntılı içerik / malzeme açıklaması. */
   content?: string;
+
+  /* ---- ÖKC / mali fiş hazırlığı ---- */
+  /** Ürüne özel KDV oranı (YÜZDE, ör. 1 / 10 / 20). Tanımsız/0 ise varsayılan
+   *  oran (KDV_ORAN_DEFAULT) kullanılır. Mali fiş KDV kırılımı bundan üretilir. */
+  kdv_orani?: number;
 }
 
 /** Yönetmelik gereği belirtilebilecek alerjen listesi (üründe BULUNANLAR seçilir). */
@@ -269,6 +274,15 @@ export function seedTables(): Table[] {
 
 /* ---------- Hesap yardımcıları ---------- */
 export const KDV_ORAN = 0.1;
+
+/* ---------- KDV / ÖKC oran yardımcıları ---------- */
+/** Seçilebilir KDV oranları (yüzde) — yürürlükteki oranlar. */
+export const KDV_ORANLARI = [1, 10, 20] as const;
+/** Varsayılan KDV oranı (YÜZDE) — ürüne özel oran yoksa bu kullanılır. */
+export const KDV_ORAN_DEFAULT = Math.round(KDV_ORAN * 100); // 10
+/** Ürünün geçerli KDV oranı (YÜZDE). Tanımsız/0 ise varsayılan oran. */
+export const kdvRate = (p?: { kdv_orani?: number } | null): number =>
+  p && p.kdv_orani && p.kdv_orani > 0 ? p.kdv_orani : KDV_ORAN_DEFAULT;
 export const lineTotal = (it: OrderItem) =>
   (prodById[it.pid]?.price || 0) * it.qty;
 export const orderTotal = (items: OrderItem[]) =>
@@ -293,37 +307,4 @@ export function minutesSince(
   return Math.max(0, Math.round(clockMin - startedAt));
 }
 
-/* ---------- Durum stilleri (beyaz kart üstü) ---------- */
-export const STATUS: Record<
-  TableStatus,
-  { label: string; dot: string; ring: string; soft: string; chip: string }
-> = {
-  bos: {
-    label: "Boş",
-    dot: "#94a3b8",
-    ring: "border-slate-200",
-    soft: "bg-slate-50",
-    chip: "bg-slate-100 text-slate-500",
-  },
-  dolu: {
-    label: "Dolu",
-    dot: "#10b981",
-    ring: "border-emerald-300",
-    soft: "bg-emerald-50",
-    chip: "bg-emerald-100 text-emerald-700",
-  },
-  hesap: {
-    label: "Hesap İstendi",
-    dot: "#f59e0b",
-    ring: "border-amber-300",
-    soft: "bg-amber-50",
-    chip: "bg-amber-100 text-amber-700",
-  },
-  rezerve: {
-    label: "Rezerve",
-    dot: "#8b5cf6",
-    ring: "border-violet-300",
-    soft: "bg-violet-50",
-    chip: "bg-violet-100 text-violet-700",
-  },
-};
+/* ------

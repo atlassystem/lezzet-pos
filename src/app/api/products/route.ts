@@ -51,12 +51,10 @@ export async function POST(req: Request) {
       allergens: Array.isArray(b.allergens) ? b.allergens.map(String) : [],
       meat: b.meat ? String(b.meat) : "Yok",
       content: b.content ? String(b.content).trim() : "",
+      // ÖKC / mali fiş: ürüne özel KDV oranı (yüzde). 0 → varsayılan oran kullanılır.
+      kdv_orani: Number(b.kdv_orani) || 0,
     };
 
     await db.collection("products").insertOne({ ...doc, restaurant_id: RID });
     return Response.json({ ok: true, product: doc });
-  } catch (err) {
-    console.error("[products POST] hata:", err);
-    return Response.json({ ok: false, error: "save_failed" }, { status: 500 });
-  }
-}
+  } catch (

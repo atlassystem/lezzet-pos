@@ -21,6 +21,8 @@ import {
   routeOfKind,
   ALLERGENS,
   MEATS,
+  KDV_ORANLARI,
+  KDV_ORAN_DEFAULT,
   DEFAULT_PRODUCT_EMOJI,
   DEFAULT_PRODUCT_GRAD,
   type Product,
@@ -46,6 +48,8 @@ type Draft = {
   allergens: string[];
   meat: string;
   content: string;
+  /* ÖKC / mali fiş — KDV oranı (yüzde) */
+  kdv_orani: number;
 };
 
 /** Görseli istemcide en fazla ~800px'e küçültüp JPEG dataURL döndürür. */
@@ -263,6 +267,10 @@ function ProductModal({
     product?.cat ?? catOptions[0]?.id ?? cats[0]?.id ?? "",
   );
   const [price, setPrice] = useState(product?.price ?? 0);
+  // ÖKC / mali fiş — ürüne özel KDV oranı (yüzde). 0/boş ise varsayılan oran.
+  const [kdvOrani, setKdvOrani] = useState(
+    product?.kdv_orani && product.kdv_orani > 0 ? product.kdv_orani : KDV_ORAN_DEFAULT,
+  );
   const [img, setImg] = useState(product?.img ?? "");
   const [uploading, setUploading] = useState(false);
   const [imgErr, setImgErr] = useState("");
@@ -438,6 +446,24 @@ function ProductModal({
             </label>
           </div>
 
+          {/* KDV oranı — mali fiş (ÖKC) KDV kırılımı bundan üretilir */}
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-semibold text-ink2">
+              KDV Oranı <span className="font-normal text-ink3">(mali fiş)</span>
+            </span>
+            <select
+              value={kdvOrani}
+              onChange={(e) => setKdvOrani(parseInt(e.target.value) || KDV_ORAN_DEFAULT)}
+              className="h-11 w-full rounded-xl border border-line2 bg-surface2 px-3 text-sm font-semibold text-ink outline-none transition focus:border-brand/60 focus:bg-white"
+            >
+              {KDV_ORANLARI.map((o) => (
+                <option key={o} value={o}>
+                  %{o}
+                </option>
+              ))}
+            </select>
+          </label>
+
           {/* ---- Yönetmelik şeffaflık alanları (QR menüde gösterilir) ---- */}
           <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
             <div className="mb-3 flex items-center gap-1.5 text-[11px] font-bold tracking-wide text-amber-700 uppercase">
@@ -507,43 +533,4 @@ function ProductModal({
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 rows={2}
-                placeholder="Örn. Elde kıyılmış kuzu eti, kuyruk yağı, acı biber; közde pişirilir."
-                className="w-full resize-none rounded-xl border border-line2 bg-white px-3.5 py-2.5 text-sm font-semibold text-ink outline-none transition placeholder:font-normal placeholder:text-ink3 focus:border-brand/60"
-              />
-            </label>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-line px-6 py-4">
-          <button
-            onClick={onClose}
-            className="rounded-xl border border-line2 bg-white px-4 py-2.5 text-sm font-bold text-ink2 transition hover:bg-surface2 hover:text-ink"
-          >
-            Vazgeç
-          </button>
-          <button
-            onClick={() =>
-              valid &&
-              onSave({
-                name: name.trim(),
-                cat: catId,
-                price,
-                route,
-                img,
-                kcal,
-                allergens,
-                meat,
-                content: content.trim(),
-              })
-            }
-            disabled={!valid}
-            className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white shadow-sm shadow-brand/30 transition hover:bg-brand2 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Check className="h-4 w-4" strokeWidth={2.6} />
-            {product ? "Kaydet" : "Ürünü Ekle"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+                placeholder="Ö

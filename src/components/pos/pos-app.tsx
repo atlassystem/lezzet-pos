@@ -23,6 +23,7 @@ import {
   type Branch,
 } from "@/lib/pos-modules";
 import type { SednaCostMap } from "@/lib/sedna";
+import { OKC_AKTIF, buildOkcFis, sendToOkc } from "@/lib/okc";
 import {
   fetchBootstrap,
   saveTable,
@@ -192,6 +193,7 @@ export function PosApp() {
     allergens?: string[];
     meat?: string;
     content?: string;
+    kdv_orani?: number;
   };
 
   const addProduct = async (d: ProductDraft) => {
@@ -264,6 +266,8 @@ export function PosApp() {
     });
 
   const payTable = async (no: string) => {
+    // ÖKC köprüsü için ödenen masanın anlık görüntüsü (sıfırlamadan önce).
+    const paying = tables.find((t) => t.no === no);
     // Optimistik: masayı anında sıfırla. (Sedna malzemesinde stok düşümü yok.)
     setTables((ts) =>
       ts.map((t) =>
@@ -276,6 +280,10 @@ export function PosApp() {
     // Kalıcı: sunucuda order+payment kaydı (aktif şube) + stok düşümü. Sunucu otoritatif.
     const { stock: freshStock } = await payTableApi(no, "nakit", activeBranch);
     if (freshStock) setStock(freshStock);
+    // ÖKC / mali fiş köprüsü — yalnızca bayrak açıkken çalışır; kapalıyken no-op.
+    if (OKC_AKTIF && paying && paying.items.length) {
+      void sendToOkc(buildOkcFis(paying, "nakit", activeBranch));
+    }
   };
 
   const goView = (v: View) => {
@@ -383,21 +391,4 @@ export function PosApp() {
               staff={staff}
               setStaff={setStaff}
               onDelete={removeStaff}
-              canManage={authUser.level === "admin"}
-            />
-          )}
-          {view === "rapor" && (
-            <Rapor
-              branchId={activeBranch}
-              branchName={
-                branches.find((b) => b.id === activeBranch)?.name ?? activeBranch
-              }
-            />
-          )}
-          {view === "subeler" && <Subeler />}
-          {view === "ayarlar" && <Ayarlar />}
-        </main>
-      </div>
-    </PermsProvider>
-  );
-}
+              canMa
