@@ -38,6 +38,8 @@ export async function PUT(
     if (b.content !== undefined) set.content = b.content ? String(b.content).trim() : "";
     // ÖKC / mali fiş: ürüne özel KDV oranı (yüzde). 0 → varsayılan oran kullanılır.
     if (b.kdv_orani !== undefined) set.kdv_orani = Number(b.kdv_orani) || 0;
+    // EUR fiyatı (TL'den kurla hesaplanır; elle de düzenlenebilir).
+    if (b.eur_price !== undefined) set.eur_price = Number(b.eur_price) || 0;
 
     if (Object.keys(set).length) {
       await coll.updateOne(byTenant({ id }), { $set: set });
@@ -58,11 +60,4 @@ export async function DELETE(
     const { id } = await params;
     const db = await getDb();
     await db.collection("products").deleteOne(byTenant({ id }));
-    // Sahipsiz reçete kalmasın: ürün silinince reçetesi de temizlenir.
-    await db.collection("recipes").deleteOne(byTenant({ pid: id }));
-    return Response.json({ ok: true });
-  } catch (err) {
-    console.error("[products DELETE] hata:", err);
-    return Response.json({ ok: false, error: "delete_failed" }, { status: 500 });
-  }
-}
+    // Sahipsiz reç

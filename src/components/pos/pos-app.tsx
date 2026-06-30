@@ -35,6 +35,7 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  fetchEurRate,
   meApi,
   logoutApi,
 } from "@/lib/pos-api";
@@ -68,6 +69,9 @@ export function PosApp() {
   const [activeBranch, setActiveBranch] = useState(BRANCHES[0].id);
   // SSR-güvenli dakika saati: sunucuda 0, mount sonrası ilerler.
   const [clockMin, setClockMin] = useState(0);
+
+  // TCMB EUR/TRY efektif satış kuru (günlük önbellekli). null = henüz/alınamadı.
+  const [eurRate, setEurRate] = useState<number | null>(null);
 
   // Menü (ürünler & kategoriler) — DB kaynaklı; modül dizileri de hidrate edilir.
   const [products, setProducts] = useState<Product[]>(() => [...PRODUCTS]);
@@ -139,6 +143,17 @@ export function PosApp() {
     return () => clearInterval(i);
   }, []);
 
+  // TCMB kurunu açılışta bir kez çek (sunucu günlük önbellekler).
+  useEffect(() => {
+    let alive = true;
+    fetchEurRate().then((r) => {
+      if (alive && r) setEurRate(r.eurTry);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // Kullanıcı değişince, erişimi olmayan bir modüldeyse ilk izinli modüle düş.
   useEffect(() => {
     if (currentUser && modules.length && !modules.includes(view as ModuleId)) {
@@ -194,6 +209,7 @@ export function PosApp() {
     meat?: string;
     content?: string;
     kdv_orani?: number;
+    eur_price?: number;
   };
 
   const addProduct = async (d: ProductDraft) => {
@@ -349,6 +365,7 @@ export function PosApp() {
               clockMin={clockMin}
               products={products}
               cats={cats}
+              eurRate={eurRate}
             />
           )}
           {!inAdisyon && view === "masalar" && (
@@ -373,39 +390,4 @@ export function PosApp() {
               onCreate={addProduct}
               onUpdate={editProduct}
               onDelete={removeProduct}
-            />
-          )}
-          {view === "stok" && (
-            <Stok
-              stock={stock}
-              recipes={recipes}
-              setRecipes={setRecipes}
-              onStockIn={stockIn}
-              products={products}
-              cats={cats}
-              sednaCosts={sednaCosts}
-            />
-          )}
-          {view === "personel" && (
-            <Personel
-              staff={staff}
-              setStaff={setStaff}
-              onDelete={removeStaff}
-              canManage={authUser.level === "admin"}
-            />
-          )}
-          {view === "rapor" && (
-            <Rapor
-              branchId={activeBranch}
-              branchName={
-                branches.find((b) => b.id === activeBranch)?.name ?? activeBranch
-              }
-            />
-          )}
-          {view === "subeler" && <Subeler />}
-          {view === "ayarlar" && <Ayarlar />}
-        </main>
-      </div>
-    </PermsProvider>
-  );
-}
+              eurRate={eur

@@ -147,6 +147,26 @@ export async function fetchSalesReport(
   };
 }
 
+/* ---------- TCMB döviz kuru (EUR/TRY efektif satış) ---------- */
+export interface EurRateInfo {
+  /** EUR/TRY efektif satış kuru. */
+  eurTry: number;
+  /** Kurun ait olduğu gün (YYYY-MM-DD). */
+  date: string;
+}
+
+/** Güncel TCMB EUR/TRY efektif satış kuru (sunucuda günlük önbellekli). Yoksa null. */
+export async function fetchEurRate(): Promise<EurRateInfo | null> {
+  try {
+    const res = await fetch("/api/rate", { cache: "no-store" });
+    if (!res.ok) return null;
+    const d = await res.json();
+    return d.ok ? { eurTry: d.eurTry, date: d.date } : null;
+  } catch {
+    return null;
+  }
+}
+
 /* ---------- Sedna maliyet kataloğu (reçete malzeme araması) ---------- */
 /** code/ad ile Sedna ürünü arar (reçete malzemesi seçimi için). */
 export async function searchSedna(q: string): Promise<SednaProduct[]> {
@@ -208,81 +228,4 @@ export async function payTableApi(
   branch?: string,
 ): Promise<{ table: Table | null; stock: StockItem[] | null }> {
   const qs = branch ? `?branch=${encodeURIComponent(branch)}` : "";
-  const res = await fetch(
-    `/api/tables/${encodeURIComponent(no)}/pay${qs}`,
-    json("POST", { method }),
-  );
-  if (!res.ok) return { table: null, stock: null };
-  const d = await res.json();
-  return { table: d.table ?? null, stock: d.stock ?? null };
-}
-
-/** Reçete haritasını DB ile eşitler. */
-export async function saveRecipes(map: Record<string, RecipeLine[]>): Promise<void> {
-  await fetch("/api/recipes", json("PUT", map));
-}
-
-/** Personel listesini DB ile eşitler. */
-export async function saveStaff(list: Staff[]): Promise<void> {
-  await fetch("/api/staff", json("PUT", list));
-}
-
-/** Personeli siler (kimlik bilgileri de belge ile birlikte gider). */
-export async function deleteStaff(id: string): Promise<boolean> {
-  const res = await fetch(`/api/staff/${encodeURIComponent(id)}`, json("DELETE"));
-  return res.ok;
-}
-
-/* ---------- Kimlik doğrulama (auth) ---------- */
-export interface AuthResult {
-  ok: boolean;
-  user?: Staff;
-  branch?: string;
-  status: number;
-}
-
-/** Giriş: branch + username + password → oturum çerezi + kullanıcı. */
-export async function loginApi(
-  branch: string,
-  username: string,
-  password: string,
-): Promise<AuthResult> {
-  const res = await fetch("/api/auth/login", json("POST", { branch, username, password }));
-  const d = await res.json().catch(() => ({}));
-  return { ok: res.ok && d.ok, user: d.user, branch: d.branch, status: res.status };
-}
-
-/** Aktif oturum kullanıcısı (çerezden). Yoksa null. */
-export async function meApi(): Promise<{ user: Staff; branch: string } | null> {
-  const res = await fetch("/api/auth/me", { cache: "no-store" });
-  if (!res.ok) return null;
-  const d = await res.json();
-  return d.user ? { user: d.user, branch: d.branch } : null;
-}
-
-/** Oturumu kapat (çerezi temizler). */
-export async function logoutApi(): Promise<void> {
-  await fetch("/api/auth/logout", json("POST"));
-}
-
-/** Admin: bir personele kullanıcı adı + şifre belirler/sıfırlar. */
-export async function setStaffCredentials(
-  id: string,
-  username: string,
-  password: string,
-): Promise<{ ok: boolean; error?: string }> {
-  const res = await fetch(
-    `/api/staff/${encodeURIComponent(id)}/credentials`,
-    json("POST", { username, password }),
-  );
-  const d = await res.json().catch(() => ({}));
-  return { ok: res.ok && d.ok, error: d.error };
-}
-
-/** Stok kalemini yeni mutlak miktara günceller. */
-export async function saveStockQty(id: string, qty: number): Promise<StockItem | null> {
-  const res = await fetch(`/api/stock/${encodeURIComponent(id)}`, json("PUT", { qty }));
-  if (!res.ok) return null;
-  const d = await res.json();
-  return d.item ?? null;
-}
+  const 

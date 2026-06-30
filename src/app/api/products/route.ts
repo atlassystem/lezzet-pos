@@ -53,12 +53,8 @@ export async function POST(req: Request) {
       content: b.content ? String(b.content).trim() : "",
       // ÖKC / mali fiş: ürüne özel KDV oranı (yüzde). 0 → varsayılan oran kullanılır.
       kdv_orani: Number(b.kdv_orani) || 0,
+      // EUR fiyatı (TL'den kurla hesaplanır; elle de düzenlenebilir).
+      eur_price: Number(b.eur_price) || 0,
     };
 
-    await db.collection("products").insertOne({ ...doc, restaurant_id: RID });
-    return Response.json({ ok: true, product: doc });
-  } catch (err) {
-    console.error("[products POST] hata:", err);
-    return Response.json({ ok: false, error: "save_failed" }, { status: 500 });
-  }
-}
+    await db.collection("pr
