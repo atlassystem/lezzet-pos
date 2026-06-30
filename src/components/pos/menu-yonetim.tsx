@@ -254,9 +254,13 @@ function ProductModal({
     cats.find((c) => c.id === product?.cat)?.kind ?? "yiyecek";
   const [kind, setKind] = useState<Kind>(initialKind);
   const [name, setName] = useState(product?.name ?? "");
+  // Seçili türün kategorileri. Eğer hiçbir kategori bu türle eşleşmiyorsa
+  // (örn. eski kayıtlarda `kind` alanı yoksa) dropdown boş kalmasın diye
+  // tüm kategorilere düş — böylece her zaman seçilebilir kategori görünür.
   const catsOfKind = cats.filter((c) => c.kind === kind);
+  const catOptions = catsOfKind.length ? catsOfKind : cats;
   const [catId, setCatId] = useState(
-    product?.cat ?? catsOfKind[0]?.id ?? cats[0]?.id ?? "",
+    product?.cat ?? catOptions[0]?.id ?? cats[0]?.id ?? "",
   );
   const [price, setPrice] = useState(product?.price ?? 0);
   const [img, setImg] = useState(product?.img ?? "");
@@ -278,7 +282,8 @@ function ProductModal({
   const pickKind = (k: Kind) => {
     setKind(k);
     const inKind = cats.filter((c) => c.kind === k);
-    if (!inKind.some((c) => c.id === catId)) setCatId(inKind[0]?.id ?? "");
+    const opts = inKind.length ? inKind : cats;
+    if (!opts.some((c) => c.id === catId)) setCatId(opts[0]?.id ?? "");
   };
 
   const valid = name.trim().length > 0 && !!catId && price >= 0 && !uploading;
@@ -412,7 +417,7 @@ function ProductModal({
                 onChange={(e) => setCatId(e.target.value)}
                 className="h-11 w-full rounded-xl border border-line2 bg-surface2 px-3 text-sm font-semibold text-ink outline-none transition focus:border-brand/60 focus:bg-white"
               >
-                {catsOfKind.map((c) => (
+                {catOptions.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
