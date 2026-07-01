@@ -5,7 +5,7 @@
    Misafir: şube + masa seçer → kategorili menüden sepete ekler →
    "Siparişi Gönder" → o masanın adisyonuna düşer (ödeme yok).
    ============================================================ */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { UtensilsCrossed, Store, Plus, Minus, Check, ArrowLeft, Send, Loader2, Info, Flame, Beef, X, ShieldCheck } from "lucide-react";
 import { TL, KINDS, freeFromBadges, hasMeat, type Product, type Category, type Kind } from "@/lib/pos-data";
 import { Food } from "@/components/pos/food";
@@ -47,7 +47,17 @@ export default function SelfOrderPage() {
       .catch(() => setErr("Menü yüklenemedi."));
   }, []);
 
-  // Şube seçilince o şubenin masalarını çek.
+  // QR linkinden gelen şube+masa (ör. /self?sube=snack&masa=12). Bir kez okunur.
+  const qp = useRef<{ sube?: string; masa?: string }>({});
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    qp.current = {
+      sube: sp.get("sube") || sp.get("branch") || undefined,
+      masa: sp.get("masa") || sp.get("table") || sp.get("no") || undefined,
+    };
+  }, []);
+
+  // Şube seçilince o şubenin masalarını + O ŞUBEDE geçerli ürünleri çek.
   useEffect(() => {
     if (!branch) {
       setTables([]);
@@ -57,13 +67,35 @@ export default function SelfOrderPage() {
     fetch(`/api/self/menu?branch=${encodeURIComponent(branch)}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
-        if (alive && d.ok) setTables(d.tables ?? []);
+        if (!alive || !d.ok) return;
+        setTables(d.tables ?? []);
+        // Menü artık seçili şubeye göre filtreli geliyor.
+        if (Array.isArray(d.products)) setProducts(d.products);
+        if (Array.isArray(d.categories)) setCats(d.categories);
       })
       .catch(() => {});
     return () => {
       alive = false;
     };
   }, [branch]);
+
+  // QR linkindeki şube geçerliyse otomatik seç (şubeler yüklendiğinde).
+  useEffect(() => {
+    const s = qp.current.sube;
+    if (s && !branch && branches.some((b) => b.id === s)) {
+      setBranch(s);
+      setTableNo("");
+    }
+  }, [branches, branch]);
+
+  // QR linkindeki masa geçerliyse otomatik seç + doğrudan menüye geç.
+  useEffect(() => {
+    const m = qp.current.masa;
+    if (m && branch && !tableNo && tables.some((t) => t.no === m)) {
+      setTableNo(m);
+      setStarted(true);
+    }
+  }, [tables, branch, tableNo]);
 
   const shownCats = useMemo(
     () =>

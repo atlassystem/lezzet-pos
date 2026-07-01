@@ -2,6 +2,7 @@
    Self-sipariş sayfası için: şubeler + (seçili şubenin) masaları + ORTAK katalog.
    Personel/şifre gibi hassas veri DÖNMEZ. */
 import { getDb, byTenant, PUBLIC_PROJ, seedIfEmpty } from "@/lib/server/repo";
+import { productInBranch } from "@/lib/pos-data";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,12 +13,17 @@ export async function GET(req: Request) {
     await seedIfEmpty(db);
     const branch = new URL(req.url).searchParams.get("branch") || "";
 
-    const [branches, halls, categories, products] = await Promise.all([
+    const [branches, halls, categories, allProducts] = await Promise.all([
       db.collection("branches").find(byTenant(), { projection: { _id: 0, id: 1, name: 1, city: 1 } }).toArray(),
       db.collection("halls").find(byTenant(), { projection: PUBLIC_PROJ }).toArray(),
-      db.collection("categories").find(byTenant(), { projection: PUBLIC_PROJ }).toArray(),
+      db.collection("categories").find(byTenant(), { projection: PUBLIC_PROJ }).sort({ order: 1 }).toArray(),
       db.collection("products").find(byTenant(), { projection: PUBLIC_PROJ }).toArray(),
     ]);
+
+    // Şube seçiliyse yalnızca o şubede geçerli ürünler (branches boş = tüm şubeler).
+    const products = branch
+      ? allProducts.filter((p) => productInBranch(p as { branches?: string[] }, branch))
+      : allProducts;
 
     // Masalar yalnızca şube seçiliyse (no/hall/seats/status — minimal).
     const tables = branch
