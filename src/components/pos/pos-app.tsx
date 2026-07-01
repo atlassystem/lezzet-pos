@@ -107,7 +107,7 @@ export function PosApp() {
   // Yeni sipariş gelen masa no'ları (rozet/vurgu için; masa açılınca temizlenir).
   const [alertTables, setAlertTables] = useState<Set<string>>(() => new Set());
   // Ekranda gösterilen bildirim balonları.
-  const [notes, setNotes] = useState<{ id: number; no: string }[]>([]);
+  const [notes, setNotes] = useState<{ id: number; no: string; summary?: string }[]>([]);
   // Son görülen masa → toplam adet imzası (artış = yeni sipariş tespiti).
   const sigRef = useRef<Map<string, number>>(new Map());
   const noteId = useRef(0);
@@ -260,6 +260,63 @@ export function PosApp() {
     return () => {
       alive = false;
       clearInterval(i);
+    };
+  }, [authUser, activeBranch]);
+
+  // SSE: QR self-siparişini gecikmesiz ilet (7 sn polling'e ek anlık kanal).
+  // Olay geldiğinde masaları tazeler, imzayı eşitler (polling çift bildirim
+  // vermesin) ve masa no + sipariş özetiyle balon/rozet/ses gösterir.
+  // SSE düşerse tarayıcı otomatik yeniden bağlanır; polling yedek kalır.
+  useEffect(() => {
+    if (!authUser) return;
+    let alive = true;
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(
+        `/api/notifications/stream?branch=${encodeURIComponent(activeBranch)}`,
+      );
+    } catch {
+      return; // EventSource yoksa polling zaten devrede
+    }
+    es.onmessage = async (e) => {
+      if (!alive) return;
+      let msg: { type?: string; no?: string; summary?: string };
+      try {
+        msg = JSON.parse(e.data);
+      } catch {
+        return;
+      }
+      if (msg.type !== "order" || !msg.no) return;
+      const no = msg.no;
+      // Masaları tazele; açık adisyon yerelde kalsın (polling'deki mantıkla aynı).
+      const fresh = await fetchTables(activeBranch);
+      const curOpen = openNoRef.current;
+      if (fresh && alive) {
+        const nextSig = new Map<string, number>();
+        for (const t of fresh) {
+          nextSig.set(t.no, (t.items ?? []).reduce((s, i) => s + i.qty, 0));
+        }
+        sigRef.current = nextSig; // polling çift bildirim vermesin
+        setTables((cur) =>
+          fresh.map((t) =>
+            t.no === curOpen ? cur.find((c) => c.no === t.no) ?? t : t,
+          ),
+        );
+      }
+      // Açık masaya gelen sipariş zaten ekranda; balon/ses gösterme.
+      if (no === curOpen) return;
+      setAlertTables((s) => new Set(s).add(no));
+      setNotes((ns) =>
+        [...ns, { id: ++noteId.current, no, summary: msg.summary }].slice(-4),
+      );
+      beep();
+    };
+    es.onerror = () => {
+      /* tarayıcı otomatik yeniden bağlanır; polling yedek kanal */
+    };
+    return () => {
+      alive = false;
+      es?.close();
     };
   }, [authUser, activeBranch]);
 
@@ -618,6 +675,11 @@ export function PosApp() {
                     <span className="block text-sm font-extrabold text-ink">
                       Masa {n.no} — yeni QR sipariş
                     </span>
+                    {n.summary ? (
+                      <span className="block truncate text-[12px] font-semibold text-ink/70">
+                        {n.summary}
+                      </span>
+                    ) : null}
                     <span className="block text-[12px] font-semibold text-rose-600">
                       Görmek için tıkla
                     </span>

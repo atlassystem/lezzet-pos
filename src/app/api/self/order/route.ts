@@ -3,6 +3,7 @@
    KALEM EKLER (fiyat/iskonto/silme YOK). Ürünler route'una göre mutfak/bar'a düşer.
    Ödeme yok — personel POS'tan kapatır. Rate-limit'li. */
 import { getDb, byTenant } from "@/lib/server/repo";
+import { publishOrder } from "@/lib/server/order-events";
 import type { OrderItem } from "@/lib/pos-data";
 
 export const runtime = "nodejs";
@@ -56,13 +57,16 @@ export async function POST(req: Request) {
     // Geçerli ürün kimlikleri (bilinmeyen pid yok sayılır).
     const products = await db
       .collection("products")
-      .find(byTenant(), { projection: { _id: 0, id: 1 } })
+      .find(byTenant(), { projection: { _id: 0, id: 1, name: 1 } })
       .toArray();
     const validIds = new Set(products.map((p) => p.id as string));
+    const nameById = new Map(products.map((p) => [p.id as string, p.name as string]));
 
     // Mevcut adisyon kalemleriyle birleştir (yalnızca qty artışı/ekleme).
     const items: OrderItem[] = (table.items ?? []).map((i: OrderItem) => ({ ...i }));
     let added = 0;
+    // Bildirim özeti için bu istekte eklenen kalemler ("2× Ayran, 1× Lahmacun").
+    const addedLines: string[] = [];
     for (const it of incoming) {
       const pid = String(it.pid ?? "");
       let qty = Math.floor(Number(it.qty) || 0);
@@ -72,6 +76,7 @@ export async function POST(req: Request) {
       if (ex) ex.qty = Math.min(ex.qty + qty, 999);
       else items.push({ pid, qty });
       added += qty;
+      addedLines.push(`${qty}× ${nameById.get(pid) ?? pid}`);
     }
     if (added === 0) {
       return Response.json({ ok: false, error: "no_valid_items" }, { status: 400 });
@@ -90,6 +95,15 @@ export async function POST(req: Request) {
         },
       },
     );
+
+    // Anlık bildirim: açık POS ekranlarına (aynı şube) SSE ile "yeni sipariş".
+    publishOrder({
+      branch,
+      no,
+      summary: addedLines.slice(0, 8).join(", "),
+      added,
+      ts: Date.now(),
+    });
 
     return Response.json({ ok: true, added });
   } catch (err) {
